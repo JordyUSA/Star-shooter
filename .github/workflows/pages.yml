@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - main
-      - claude/game-superboss-phases-5mh4fp
   workflow_dispatch:
 
 permissions:
