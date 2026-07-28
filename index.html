@@ -267,34 +267,55 @@
     align-items: center;
   }
   #threatBar.show { opacity: 1; }
-  .threat-name {
-    font-family: 'Orbitron', sans-serif;
-    font-size: 7px;
-    font-weight: 700;
-    letter-spacing: 1px;
+  .threat-target {
+    font-size: 14px;
     color: #ff2050;
-    margin-bottom: 6px;
-    text-shadow: 0 0 5px rgba(0,0,0,0.9);
-    writing-mode: vertical-rl;
+    text-shadow: 0 0 8px #ff2050;
+    margin-bottom: 4px;
+    line-height: 1;
   }
   .threat-track {
     width: 14px;
     flex: 1;
+    position: relative;
+  }
+  .threat-fill-clip {
+    position: absolute; inset: 0;
     background: rgba(13,17,48,0.75);
     border: 2px solid rgba(255,255,255,0.3);
     border-radius: 10px;
     overflow: hidden;
-    position: relative;
     display: flex;
     align-items: flex-end;
   }
   .threat-fill {
     width: 100%; height: 0%;
-    background: linear-gradient(0deg, #ff2050, #ffc23d);
+    background: linear-gradient(0deg, #4ff0ff, #ffc23d 85%);
     transition: height 0.2s linear;
   }
-  #threatBar.critical .threat-track { animation: threatPulse 0.6s ease-in-out infinite; }
-  @keyframes threatPulse {
+  .threat-ship {
+    position: absolute;
+    left: 50%;
+    bottom: 0%;
+    transform: translate(-50%, 45%);
+    font-size: 13px;
+    color: #4ff0ff;
+    text-shadow: 0 0 6px #4ff0ff, 0 0 2px #fff;
+    transition: bottom 0.2s linear;
+    line-height: 1;
+    pointer-events: none;
+  }
+  #threatBar.critical .threat-target {
+    animation: threatPulseIcon 0.6s ease-in-out infinite;
+  }
+  #threatBar.critical .threat-fill-clip {
+    animation: threatPulseBox 0.6s ease-in-out infinite;
+  }
+  @keyframes threatPulseIcon {
+    0%, 100% { text-shadow: 0 0 8px rgba(255,32,80,0.6); transform: scale(1); }
+    50% { text-shadow: 0 0 18px rgba(255,32,80,1); transform: scale(1.3); }
+  }
+  @keyframes threatPulseBox {
     0%, 100% { box-shadow: 0 0 10px rgba(255,32,80,0.5); }
     50% { box-shadow: 0 0 26px rgba(255,32,80,0.95); }
   }
@@ -525,8 +546,11 @@
   <div class="heat-track"><div class="heat-fill" id="heatFill"></div></div>
 </div>
 <div id="threatBar">
-  <div class="threat-name" id="threatName">THREAT</div>
-  <div class="threat-track"><div class="threat-fill" id="threatFill"></div></div>
+  <div class="threat-target" id="threatTarget">◆</div>
+  <div class="threat-track">
+    <div class="threat-fill-clip"><div class="threat-fill" id="threatFill"></div></div>
+    <div class="threat-ship" id="threatShip">▲</div>
+  </div>
 </div>
 
 <div id="startScreen" class="overlay">
@@ -594,6 +618,8 @@
   var heatTrackEl = document.querySelector('.heat-track');
   var threatBarEl = document.getElementById('threatBar');
   var threatFillEl = document.getElementById('threatFill');
+  var threatShipEl = document.getElementById('threatShip');
+  var threatTargetEl = document.getElementById('threatTarget');
   var letterboxTopEl = document.getElementById('letterboxTop');
   var letterboxBottomEl = document.getElementById('letterboxBottom');
   var cinematicTextEl = document.getElementById('cinematicText');
@@ -888,12 +914,9 @@
       ]
     }
   };
-  var SUPERBOSS_INTRO_BEATS = [
-    { at: 0.0, text: 'WARNING', color: '#ff2050', big: true },
-    { at: 1.6, text: 'MASSIVE HOSTILE SIGNATURE DETECTED', color: '#ff5a3d' },
-    { at: 3.5, text: 'THE VOID TITAN', color: '#ffffff', big: true, boss: true },
-    { at: 5.4, end: true }
-  ];
+  var SUPERBOSS_CHARGEUP_TIME = 1.6;
+  var SUPERBOSS_HYPERSPEED_TIME = 2.4;
+  var SUPERBOSS_DETECTED_TIME = 1.8;
 
   // ---------- Cosmic hazard config ----------
   var HAZARD_UNLOCK = { star: 25, blackhole: 60, planet: 95, alien: 125, cosmos: 155 };
@@ -953,16 +976,17 @@
   var heat = 0;
   var zoneAnnounced = {};
 
-  var superbossState = 'idle'; // idle | waiting | intro | active | defeated
+  var superbossState = 'idle'; // idle | chargeup | hyperspeed | detected | active | defeated
   var superboss = null;
-  var superbossIntroTimer = 0;
-  var superbossIntroStep = 0;
+  var superbossSeqTimer = 0;
+  var superbossSequenceActive = false;
   var superbossMusicActive = false;
   var superbossMusicGen = 0;
   var superbossMaxPhaseReached = 0;
   var superbossActiveStartTime = 0;
   var superbossDefeatTime = 0;
   var shakeTime = 0, shakeMag = 0;
+  var warpStreaks = [];
 
   var player = { x: 0, y: 0, targetX: 0, targetY: 0, radius: 16, invincible: 0 };
 
@@ -1685,10 +1709,11 @@
 
   // ---------- Threat progress bar ----------
   function updateThreatUI() {
-    if (superbossState === 'idle' || superbossState === 'waiting') {
+    if (superbossState === 'idle') {
       var pct = Math.min(1, elapsed / SUPERBOSS_TIME);
       threatBarEl.classList.add('show');
       threatFillEl.style.height = (pct * 100) + '%';
+      threatShipEl.style.bottom = (pct * 100) + '%';
       threatBarEl.classList.toggle('critical', pct > 0.85);
     } else {
       threatBarEl.classList.remove('show');
@@ -1715,42 +1740,136 @@
     cinematicTextEl.classList.add('show');
   }
 
-  function startSuperbossIntro() {
-    superbossIntroTimer = 0;
-    superbossIntroStep = 0;
-    letterboxTopEl.classList.add('show');
-    letterboxBottomEl.classList.add('show');
-    triggerShake(0.8, 6);
-    playTone({ freq: 55, duration: 1.6, type: 'sawtooth', vol: 0.2, slideTo: 38 });
-    playNoise(1.2, 0.12);
-    if (navigator.vibrate) navigator.vibrate([40, 30, 40, 30, 120]);
+  // ---------- Hyperspeed warp streak field ----------
+  function initWarpStreaks() {
+    warpStreaks = [];
+    var count = 70;
+    for (var i = 0; i < count; i++) {
+      warpStreaks.push({
+        x: rand(0, width), y: rand(-height, height),
+        len: rand(40, 150), speed: rand(900, 1800), w: rand(1, 2.6)
+      });
+    }
+  }
+  function updateWarpStreaks(dt, speedMult) {
+    warpStreaks.forEach(function (s) {
+      s.y += s.speed * speedMult * dt;
+      if (s.y - s.len > height) { s.y = -rand(0, 200); s.x = rand(0, width); }
+    });
+  }
+  function drawWarpStreaks(alpha) {
+    if (alpha <= 0) return;
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.strokeStyle = '#bfe9ff';
+    ctx.shadowColor = '#4ff0ff';
+    ctx.shadowBlur = 6;
+    ctx.lineCap = 'round';
+    warpStreaks.forEach(function (s) {
+      ctx.lineWidth = s.w;
+      ctx.beginPath();
+      ctx.moveTo(s.x, s.y);
+      ctx.lineTo(s.x, s.y - s.len);
+      ctx.stroke();
+    });
+    ctx.restore();
   }
 
-  function updateSuperbossIntro(dt) {
-    superbossIntroTimer += dt;
-    while (superbossIntroStep < SUPERBOSS_INTRO_BEATS.length && superbossIntroTimer >= SUPERBOSS_INTRO_BEATS[superbossIntroStep].at) {
-      var beat = SUPERBOSS_INTRO_BEATS[superbossIntroStep];
-      if (beat.end) {
-        finishSuperbossIntro();
-      } else {
-        showCinematicLine(beat.text, beat.color, beat.big);
-        if (beat.boss) {
-          triggerShake(0.6, 10);
-          playTone({ freq: 70, duration: 1.0, type: 'sawtooth', vol: 0.22, slideTo: 30 });
-          playNoise(0.8, 0.15);
-          if (navigator.vibrate) navigator.vibrate([60, 40, 60, 40, 160]);
-        } else {
-          playTone({ freq: 200, duration: 0.15, type: 'square', vol: 0.05, slideTo: 600 });
-        }
-      }
-      superbossIntroStep++;
+  function drawChargeupFX(pct) {
+    ctx.save();
+    ctx.translate(player.x, player.y);
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.strokeStyle = 'rgba(79,240,255,' + (0.35 + 0.5 * pct) + ')';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(0, 0, 18 + pct * 60, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * pct);
+    ctx.stroke();
+    ctx.fillStyle = 'rgba(79,240,255,' + (0.06 + 0.14 * pct) + ')';
+    ctx.beginPath();
+    ctx.arc(0, 0, 26 + 6 * Math.sin(elapsed * 30), 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  // ---------- Superboss sequence: chargeup -> hyperspeed -> detected ----------
+  function sweepFieldForHyperspeed() {
+    rocks.forEach(function (r) { spawnParticles(r.x, r.y, '#9c9384', 8); spawnFlash(r.x, r.y, '#9ef7ff', r.r); });
+    rocks = [];
+    enemies.forEach(function (en) { spawnParticles(en.x, en.y, ENEMY_KINDS[en.kind].color, 10); spawnFlash(en.x, en.y, '#9ef7ff', en.r); });
+    enemies = [];
+    enemyBullets = [];
+    hazards.forEach(function (hz) { spawnParticles(hz.x, hz.y, hz.color || '#9a3dff', 12); });
+    hazards = [];
+    nebulae = [];
+    powerUps.forEach(function (p) { spawnParticles(p.x, p.y, (POWERUP_KINDS[p.kind] || {}).color || '#fff', 6); });
+    powerUps = [];
+    bombPickups.forEach(function (p) { spawnParticles(p.x, p.y, '#ff5a3d', 6); });
+    bombPickups = [];
+    if (bossActive) {
+      spawnParticles(bossActive.x, bossActive.y, bossActive.color, 24);
+      spawnFlash(bossActive.x, bossActive.y, '#ffffff', 50);
+      bossActive = null;
+      bossBarEl.classList.add('hidden');
     }
   }
 
-  function finishSuperbossIntro() {
+  function startSuperbossChargeup() {
+    superbossState = 'chargeup';
+    superbossSeqTimer = 0;
+    superbossSequenceActive = true;
+    nextBossAt = Infinity;
+    showBanner('⚡ HYPERSPEED CHARGING', '#4ff0ff');
+    playTone({ freq: 90, duration: 1.3, type: 'sine', vol: 0.12, slideTo: 640 });
+    triggerShake(0.3, 2);
+  }
+
+  function updateSuperbossChargeup(dt) {
+    superbossSeqTimer += dt;
+    if (superbossSeqTimer >= SUPERBOSS_CHARGEUP_TIME) startHyperspeed();
+  }
+
+  function startHyperspeed() {
+    superbossState = 'hyperspeed';
+    superbossSeqTimer = 0;
+    initWarpStreaks();
+    sweepFieldForHyperspeed();
+    showCinematicLine('HYPERSPEED ACTIVATE', '#4ff0ff', true);
+    triggerShake(0.5, 8);
+    flashDamage('rgba(79,240,255,0.45)');
+    playNoise(0.4, 0.2);
+    playTone({ freq: 700, duration: 0.6, type: 'sawtooth', vol: 0.18, slideTo: 1400 });
+    if (navigator.vibrate) navigator.vibrate([30, 20, 80]);
+  }
+
+  function updateHyperspeed(dt) {
+    superbossSeqTimer += dt;
+    updateWarpStreaks(dt, Math.min(1, superbossSeqTimer / 0.4));
+    if (superbossSeqTimer >= SUPERBOSS_HYPERSPEED_TIME) startDetectedBeat();
+  }
+
+  function startDetectedBeat() {
+    superbossState = 'detected';
+    superbossSeqTimer = 0;
+    letterboxTopEl.classList.add('show');
+    letterboxBottomEl.classList.add('show');
+    triggerShake(0.6, 9);
+    playTone({ freq: 70, duration: 1.0, type: 'sawtooth', vol: 0.22, slideTo: 30 });
+    playNoise(0.8, 0.15);
+    if (navigator.vibrate) navigator.vibrate([60, 40, 60, 40, 160]);
+    showCinematicLine('THE VOID TITAN', '#ffffff', true);
+  }
+
+  function updateDetectedBeat(dt) {
+    superbossSeqTimer += dt;
+    updateWarpStreaks(dt, Math.max(0, 1 - superbossSeqTimer / 0.5));
+    if (superbossSeqTimer >= SUPERBOSS_DETECTED_TIME) finishSuperbossSequence();
+  }
+
+  function finishSuperbossSequence() {
     letterboxTopEl.classList.remove('show');
     letterboxBottomEl.classList.remove('show');
     cinematicTextEl.classList.remove('show');
+    superbossSequenceActive = false;
     spawnSuperboss();
     superbossState = 'active';
     startSuperbossMusic();
@@ -2093,6 +2212,7 @@
   }
 
   function loseLife() {
+    if (superbossSequenceActive) return;
     if (player.invincible > 0) return;
     if (shieldCharges > 0) {
       shieldCharges--;
@@ -2130,7 +2250,7 @@
     }
     if (superbossState === 'defeated') {
       rows.push('<div class="stat-row victory">✦ VOID TITAN SLAIN IN ' + formatTime(superbossDefeatTime - superbossActiveStartTime) + '</div>');
-    } else if (superbossState === 'active' || superbossState === 'intro' || superbossState === 'waiting') {
+    } else if (superbossState === 'active' || superbossState === 'chargeup' || superbossState === 'hyperspeed' || superbossState === 'detected') {
       var phaseLabel = superbossMaxPhaseReached > 0 ? ('PHASE ' + superbossMaxPhaseReached) : 'INCOMING';
       rows.push('<div class="stat-row fallen">VOID TITAN — ' + phaseLabel + ' (UNFINISHED)</div>');
     }
@@ -2179,11 +2299,12 @@
     bannerEl.classList.remove('show');
     superbossState = 'idle';
     superboss = null;
-    superbossIntroTimer = 0;
-    superbossIntroStep = 0;
+    superbossSeqTimer = 0;
+    superbossSequenceActive = false;
     superbossMaxPhaseReached = 0;
     superbossActiveStartTime = 0;
     superbossDefeatTime = 0;
+    warpStreaks = [];
     stopSuperbossMusic();
     letterboxTopEl.classList.remove('show');
     letterboxBottomEl.classList.remove('show');
@@ -2236,7 +2357,7 @@
     shipTrail.forEach(function (t) { t.life -= dt; });
     shipTrail = shipTrail.filter(function (t) { return t.life > 0; });
 
-    var playerHit = hazardHitTest(player.x, player.y);
+    var playerHit = !superbossSequenceActive && hazardHitTest(player.x, player.y);
     if (playerHit) {
       if (DIFF.instantDeath) {
         triggerInstantDeath(playerHit);
@@ -2345,15 +2466,13 @@
     if (bossActive) updateBoss(dt);
 
     if (superbossState === 'idle' && elapsed >= SUPERBOSS_TIME) {
-      superbossState = 'waiting';
-      nextBossAt = Infinity;
-      showBanner('⚠ MASSIVE SIGNATURE APPROACHING', '#ff2050');
-    }
-    if (superbossState === 'waiting' && !bossActive && enemies.length === 0 && rocks.length === 0) {
-      superbossState = 'intro';
-      startSuperbossIntro();
-    } else if (superbossState === 'intro') {
-      updateSuperbossIntro(dt);
+      startSuperbossChargeup();
+    } else if (superbossState === 'chargeup') {
+      updateSuperbossChargeup(dt);
+    } else if (superbossState === 'hyperspeed') {
+      updateHyperspeed(dt);
+    } else if (superbossState === 'detected') {
+      updateDetectedBeat(dt);
     } else if (superbossState === 'active') {
       updateSuperboss(dt);
     }
@@ -3383,6 +3502,11 @@
     });
     ctx.globalAlpha = 1;
 
+    var warpAlpha = 0;
+    if (superbossState === 'hyperspeed') warpAlpha = Math.min(1, superbossSeqTimer / 0.4);
+    else if (superbossState === 'detected') warpAlpha = Math.max(0, 1 - superbossSeqTimer / 0.5);
+    if (warpAlpha > 0) drawWarpStreaks(warpAlpha);
+
     nebulae.forEach(drawNebula);
 
     hazards.forEach(function (hz) {
@@ -3471,6 +3595,9 @@
         ctx.stroke();
       }
       ctx.restore();
+    }
+    if (superbossState === 'chargeup') {
+      drawChargeupFX(Math.min(1, superbossSeqTimer / SUPERBOSS_CHARGEUP_TIME));
     }
     drawShip(player.x, player.y, blink);
 
