@@ -777,6 +777,24 @@
     noise.start();
   }
 
+  function playExplosionSFX(magnitude) {
+    magnitude = magnitude === undefined ? 1 : magnitude;
+    playNoise(0.32 + 0.35 * magnitude, 0.15 + 0.14 * magnitude);
+    playTone({ freq: 72 - 20 * magnitude, duration: 0.5 + 0.5 * magnitude, type: 'sawtooth', vol: 0.15 + 0.1 * magnitude, slideTo: 22 });
+    setTimeout(function () { playNoise(0.12, 0.08 * magnitude); }, 70);
+    setTimeout(function () { playNoise(0.1, 0.06 * magnitude); }, 160);
+  }
+
+  function playPlanetImpactSFX() {
+    playTone({ freq: 90, duration: 0.22, type: 'sine', vol: 0.14, slideTo: 38 });
+    playNoise(0.14, 0.09);
+  }
+
+  function playCrashThud(pitch) {
+    playTone({ freq: pitch || 130, duration: 0.16, type: 'square', vol: 0.1, slideTo: (pitch || 130) * 0.5 });
+    playNoise(0.09, 0.06);
+  }
+
   // ---------- Helpers ----------
   function rand(min, max) { return Math.random() * (max - min) + min; }
   function dist(x1, y1, x2, y2) { return Math.hypot(x1 - x2, y1 - y2); }
@@ -974,6 +992,14 @@
     }
   };
 
+  var ENEMY_DEATH_SFX = {
+    interceptor: { freq: 240, type: 'sawtooth', slideTo: 90 },
+    gunship: { freq: 150, type: 'square', slideTo: 60 },
+    strafer: { freq: 320, type: 'sawtooth', slideTo: 140 },
+    sentinel: { freq: 130, type: 'square', slideTo: 45 },
+    alien: { freq: 420, type: 'sine', slideTo: 180 }
+  };
+
   // ---------- Power-up kinds ----------
   var POWERUP_KINDS = {
     rapid: { name: 'RAPID FIRE', color: '#4ff0ff', icon: '⚡' },
@@ -995,7 +1021,8 @@
     void_slayer: { name: 'VOID SLAYER', desc: 'Defeat the Void Titan', icon: '👑' },
     flawless_titan: { name: 'FLAWLESS TITAN', desc: 'Defeat the Void Titan unscathed', icon: '🛡️' },
     speed_demon: { name: 'SPEED DEMON', desc: 'Defeat the Void Titan in under 45s', icon: '⚡' },
-    hoarder: { name: 'HOARDER', desc: 'Carry 4 bombs at once', icon: '💣' }
+    hoarder: { name: 'HOARDER', desc: 'Carry 4 bombs at once', icon: '💣' },
+    wanted_curve: { name: 'CURVE LIKE WESLEY', desc: 'Kill an enemy with a shot bent around a black hole', icon: '🌀' }
   };
   var ACHIEVEMENTS_STORAGE_KEY = 'debrisRunAchievements';
   var unlockedAchievements = {};
@@ -1215,6 +1242,8 @@
   var blastRings = [];
   var bombCount = 0;
   var BOMB_MAX_RANGE = 340;
+  var debris = [];
+  var WANTED_CURVE_THRESHOLD = 0.9;
 
   var STAR_TINTS = ['#ffffff', '#ffffff', '#ffffff', '#bcd9ff', '#ffe9c2'];
 
@@ -1437,6 +1466,54 @@
     });
   }
 
+  function spawnDebrisDeath(x, y, r, color, count) {
+    count = count || 6;
+    for (var i = 0; i < count; i++) {
+      var a = rand(0, Math.PI * 2);
+      var speed = rand(70, 230);
+      debris.push({
+        x: x, y: y,
+        vx: Math.cos(a) * speed, vy: Math.sin(a) * speed - rand(20, 70),
+        rot: rand(0, Math.PI * 2), vrot: rand(-9, 9),
+        size: rand(Math.max(2, r * 0.14), Math.max(4, r * 0.4)),
+        color: color,
+        life: rand(0.55, 1.0), maxLife: 1.0,
+        shape: Math.random() < 0.5 ? 'tri' : 'rect'
+      });
+    }
+  }
+
+  function updateDebris(dt) {
+    debris.forEach(function (d) {
+      d.vy += 260 * dt;
+      d.vx *= 0.985;
+      d.x += d.vx * dt;
+      d.y += d.vy * dt;
+      d.rot += d.vrot * dt;
+      d.life -= dt;
+    });
+    debris = debris.filter(function (d) { return d.life > 0 && d.y < height + 60; });
+  }
+
+  function drawDebrisPiece(d) {
+    ctx.save();
+    ctx.translate(d.x, d.y);
+    ctx.rotate(d.rot);
+    ctx.globalAlpha = Math.max(0, d.life / d.maxLife);
+    ctx.fillStyle = d.color;
+    if (d.shape === 'tri') {
+      ctx.beginPath();
+      ctx.moveTo(0, -d.size);
+      ctx.lineTo(d.size, d.size * 0.8);
+      ctx.lineTo(-d.size, d.size * 0.8);
+      ctx.closePath();
+      ctx.fill();
+    } else {
+      ctx.fillRect(-d.size * 0.5, -d.size * 0.35, d.size, d.size * 0.7);
+    }
+    ctx.restore();
+  }
+
   function spawnFizzle(x, y, color) {
     for (var i = 0; i < 9; i++) {
       var angle = rand(0, Math.PI * 2);
@@ -1488,6 +1565,45 @@
         r: rand(1, 2.6)
       });
     }
+  }
+
+  function spawnPlanetImpact(x, y, planet, big) {
+    var nx = x - planet.x, ny = y - planet.y;
+    var nd = Math.max(1, Math.hypot(nx, ny));
+    nx /= nd; ny /= nd;
+    var tangent = Math.atan2(ny, nx) + Math.PI / 2;
+    var scale = big ? 1.6 : 1;
+    var planetColor = planet.color || '#c2b280';
+    spawnFlash(x, y, '#fff6e0', 22 * scale);
+    spawnFlash(x, y, planetColor, 40 * scale);
+    var sparkCount = big ? 18 : 11;
+    for (var i = 0; i < sparkCount; i++) {
+      var spread = rand(-1.15, 1.15);
+      var ang = tangent + spread;
+      var speed = rand(50, 160) * scale;
+      particles.push({
+        x: x, y: y,
+        vx: Math.cos(ang) * speed + nx * 40, vy: Math.sin(ang) * speed + ny * 40,
+        life: rand(0.35, 0.7), maxLife: 0.7,
+        color: planetColor,
+        r: rand(1.5, 3.2) * scale
+      });
+    }
+    var sparkleCount = big ? 8 : 5;
+    for (var s = 0; s < sparkleCount; s++) {
+      var sa = tangent + rand(-0.9, 0.9);
+      var sr = rand(6, 18) * scale;
+      particles.push({
+        x: x + Math.cos(sa) * sr, y: y + Math.sin(sa) * sr,
+        vx: 0, vy: 0,
+        life: 0.16, maxLife: 0.16,
+        color: '#ffffff',
+        r: rand(2, 4) * scale,
+        flash: true
+      });
+    }
+    triggerShake(big ? 0.3 : 0.16, big ? 4 : 2);
+    playPlanetImpactSFX();
   }
 
   function spawnPowerUp(x, y) {
@@ -1617,6 +1733,7 @@
       if (dist(x, y, rk.x, rk.y) < blastR + rk.r) {
         score += Math.round((rk.r > 26 ? 15 : 10) * DIFF.scoreMult);
         spawnParticles(rk.x, rk.y, '#9c9384', 10);
+        spawnDebrisDeath(rk.x, rk.y, rk.r, '#9c9384', 7);
         rocks.splice(i, 1);
         bombKills++;
       }
@@ -1627,6 +1744,7 @@
       if (dist(x, y, en2.x, en2.y) < blastR + en2.r) {
         score += Math.round(ENEMY_KINDS[en2.kind].score * DIFF.scoreMult);
         spawnParticles(en2.x, en2.y, ENEMY_KINDS[en2.kind].color, 12);
+        spawnDebrisDeath(en2.x, en2.y, en2.r, ENEMY_KINDS[en2.kind].color, 7);
         enemies.splice(j, 1);
         bombKills++;
       }
@@ -1634,11 +1752,11 @@
     if (bombKills >= 4) checkAchievement('overkill');
     else if (bombKills >= 2) checkAchievement('two_birds');
     enemyBullets = enemyBullets.filter(function (b) { return dist(x, y, b.x, b.y) >= blastR; });
-    if (bossActive && dist(x, y, bossActive.x, bossActive.y) < blastR + bossActive.r) {
+    if (bossActive && !bossActive.dying && dist(x, y, bossActive.x, bossActive.y) < blastR + bossActive.r) {
       bossActive.hp -= 32;
       spawnParticles(bossActive.x, bossActive.y, '#ffffff', 20);
       if (bossActive.hp <= 0) {
-        defeatBoss();
+        startBossDeathSequence(bossActive);
       } else {
         bossFillEl.style.width = Math.max(0, bossActive.hp / bossActive.maxHp * 100) + '%';
       }
@@ -1678,6 +1796,8 @@
     }
     hazards.push(hz);
     showBanner('\u26A0 ' + def.name + ' DETECTED', hz.color);
+    playTone({ freq: 520, duration: 0.14, type: 'square', vol: 0.06, slideTo: 380 });
+    setTimeout(function () { playTone({ freq: 380, duration: 0.16, type: 'square', vol: 0.06, slideTo: 260 }); }, 130);
   }
 
   function updateHazards(dt) {
@@ -1791,6 +1911,8 @@
       spawnFlameBurst(player.x, player.y, 30);
     } else if (hz.type === 'blackhole') {
       spawnVortexSwirl(player.x, player.y, hz, hz.color || '#9a3dff', 24);
+    } else if (hz.type === 'planet') {
+      spawnPlanetImpact(player.x, player.y, hz, true);
     } else {
       spawnParticles(player.x, player.y, hz.color || '#ff3d6b', 34);
     }
@@ -1825,6 +1947,9 @@
     bossFillEl.style.background = color;
     bossBarEl.classList.remove('hidden');
     showBanner(name + ' INCOMING', color);
+    playTone({ freq: 65, duration: 0.9, type: 'sawtooth', vol: 0.16, slideTo: 40 });
+    playNoise(0.5, 0.12);
+    triggerShake(0.4, 3);
   }
 
   function startBossStep(boss) {
@@ -1882,6 +2007,119 @@
     }
     boss.stepTimer -= dt;
     if (boss.stepTimer <= 0) advanceBossStep(boss);
+  }
+
+  function startBossDeathSequence(boss) {
+    boss.dying = true;
+    boss.dyingTimer = 0;
+    boss.dyingDuration = rand(1.6, 2.2);
+    boss.spinRate = (Math.random() < 0.5 ? -1 : 1) * rand(7, 11);
+    boss.dyingVx = boss.vx * 0.4 + rand(-40, 40);
+    boss.dyingVy = rand(20, 50);
+    boss.dyingWobble = rand(0, Math.PI * 2);
+    boss.smokeTimer = 0;
+    boss.flameTimer = 0;
+    boss.tumbleRot = 0;
+    bossBarEl.classList.add('hidden');
+    showBanner(boss.name + ' HULL BREACH', boss.color);
+    playTone({ freq: 160, duration: 0.4, type: 'sawtooth', vol: 0.14, slideTo: 60 });
+    playNoise(0.3, 0.14);
+    triggerShake(0.3, 3);
+  }
+
+  function updateBossDeathSequence(dt) {
+    var boss = bossActive;
+    if (!boss) return;
+    boss.dyingTimer += dt;
+    boss.dyingWobble += dt * 6;
+    boss.tumbleRot += boss.spinRate * dt;
+    boss.dyingVy += 40 * dt;
+    boss.x += boss.dyingVx * dt + Math.sin(boss.dyingWobble) * 30 * dt;
+    boss.y += boss.dyingVy * dt;
+    boss.x = Math.max(boss.r, Math.min(width - boss.r, boss.x));
+
+    boss.smokeTimer -= dt;
+    if (boss.smokeTimer <= 0) {
+      boss.smokeTimer = 0.045;
+      particles.push({
+        x: boss.x + rand(-boss.r * 0.4, boss.r * 0.4), y: boss.y + rand(-boss.r * 0.4, boss.r * 0.4),
+        vx: rand(-10, 10), vy: rand(-40, -15),
+        life: rand(0.6, 1.0), maxLife: 1.0,
+        color: 'rgba(70,70,80,0.8)',
+        r: rand(4, 9),
+        smoke: true
+      });
+    }
+    boss.flameTimer -= dt;
+    if (boss.flameTimer <= 0) {
+      boss.flameTimer = rand(0.09, 0.16);
+      spawnFlameBurst(boss.x + rand(-boss.r * 0.3, boss.r * 0.3), boss.y + rand(-boss.r * 0.3, boss.r * 0.3), 4);
+    }
+
+    var hitPath = false;
+    for (var ri = rocks.length - 1; ri >= 0; ri--) {
+      var rk = rocks[ri];
+      if (rk.consumedBy) continue;
+      if (dist(boss.x, boss.y, rk.x, rk.y) < boss.r * 0.9 + rk.r) {
+        score += Math.round((rk.r > 26 ? 15 : 10) * DIFF.scoreMult);
+        spawnDebrisDeath(rk.x, rk.y, rk.r, '#9c9384', 6);
+        spawnParticles(rk.x, rk.y, '#9c9384', 8);
+        rocks.splice(ri, 1);
+        hitPath = true;
+      }
+    }
+    for (var ei = enemies.length - 1; ei >= 0; ei--) {
+      var enn = enemies[ei];
+      if (enn.consumedBy) continue;
+      if (dist(boss.x, boss.y, enn.x, enn.y) < boss.r * 0.9 + enn.r) {
+        score += Math.round(ENEMY_KINDS[enn.kind].score * DIFF.scoreMult);
+        spawnDebrisDeath(enn.x, enn.y, enn.r, ENEMY_KINDS[enn.kind].color, 6);
+        spawnParticles(enn.x, enn.y, ENEMY_KINDS[enn.kind].color, 10);
+        enemies.splice(ei, 1);
+        hitPath = true;
+      }
+    }
+    if (hitPath) updateHUD();
+
+    if (boss.dyingTimer >= boss.dyingDuration) finishBossDeathSequence(boss);
+  }
+
+  function finishBossDeathSequence(boss) {
+    var blastR = 300;
+    var bx = boss.x, by = boss.y;
+    triggerHitstop(0.14);
+    triggerShake(1.2, 12);
+    triggerSunburst(bx, by, 1.6);
+    spawnParticles(bx, by, boss.color, 50);
+    spawnParticles(bx, by, '#ffffff', 30);
+    spawnFlash(bx, by, '#ffffff', 90);
+    spawnBlastRing(bx, by, blastR * 0.6, '#ffffff', 0.5, 0);
+    spawnBlastRing(bx, by, blastR, '#ffb347', 0.85, 0.08);
+    spawnBlastRing(bx, by, blastR * 1.2, boss.color, 1.05, 0.16);
+    playExplosionSFX(0.75);
+    if (navigator.vibrate) navigator.vibrate([70, 50, 140, 60, 90]);
+
+    for (var ri = rocks.length - 1; ri >= 0; ri--) {
+      var rk = rocks[ri];
+      if (rk.consumedBy) continue;
+      if (dist(bx, by, rk.x, rk.y) < blastR + rk.r) {
+        score += Math.round((rk.r > 26 ? 15 : 10) * DIFF.scoreMult);
+        spawnDebrisDeath(rk.x, rk.y, rk.r, '#9c9384', 7);
+        rocks.splice(ri, 1);
+      }
+    }
+    for (var ei = enemies.length - 1; ei >= 0; ei--) {
+      var enn = enemies[ei];
+      if (enn.consumedBy) continue;
+      if (dist(bx, by, enn.x, enn.y) < blastR + enn.r) {
+        score += Math.round(ENEMY_KINDS[enn.kind].score * DIFF.scoreMult);
+        spawnDebrisDeath(enn.x, enn.y, enn.r, ENEMY_KINDS[enn.kind].color, 7);
+        enemies.splice(ei, 1);
+      }
+    }
+    enemyBullets = enemyBullets.filter(function (b) { return dist(bx, by, b.x, b.y) >= blastR; });
+
+    defeatBoss();
   }
 
   function defeatBoss() {
@@ -2619,7 +2857,7 @@
     score = 0; lives = DIFF.startLives; frame = 0; elapsed = 0;
     bullets = []; enemyBullets = []; rocks = []; enemies = []; particles = []; powerUps = [];
     hazards = []; nebulae = []; heat = 0; zoneAnnounced = {}; shipTrail = []; allies = [];
-    bombPickups = []; bombs = []; blastRings = []; bombCount = 0;
+    bombPickups = []; bombs = []; blastRings = []; bombCount = 0; debris = [];
     activeBuffs = {}; shieldCharges = 0;
     bossActive = null; bossesDefeated = 0; nextBossAt = 40;
     rockInterval = 1.1 * DIFF.spawnMult; enemyInterval = 3.2 * DIFF.spawnMult;
@@ -2805,7 +3043,10 @@
       }
     }
     if (!bossActive && !superbossHoldsField && elapsed >= nextBossAt) spawnBoss();
-    if (bossActive) updateBoss(dt);
+    if (bossActive) {
+      if (bossActive.dying) updateBossDeathSequence(dt);
+      else updateBoss(dt);
+    }
 
     if (superbossState === 'idle' && elapsed >= SUPERBOSS_TIME) {
       startSuperbossChargeup();
@@ -2846,7 +3087,12 @@
     bullets.forEach(function (b) {
       var g = gravityForceAt(b.x, b.y);
       b.vx = (b.vx || 0) + g.fx * dt;
+      var prevAngle = Math.atan2(b.vy, b.vx);
       b.vy += g.fy * dt;
+      var newAngle = Math.atan2(b.vy, b.vx);
+      if (g.fx !== 0 || g.fy !== 0) {
+        b.curveAccum = (b.curveAccum || 0) + Math.abs(angleDiff(newAngle, prevAngle));
+      }
       b.x += b.vx * dt;
       b.y += b.vy * dt;
     });
@@ -2856,6 +3102,7 @@
       if (hit) {
         if (hit.type === 'blackhole') spawnVortexSwirl(b.x, b.y, hit, '#9ef7ff', 6);
         else if (hit.type === 'star') spawnFlameBurst(b.x, b.y, 8);
+        else if (hit.type === 'planet') spawnPlanetImpact(b.x, b.y, hit);
         else spawnParticles(b.x, b.y, '#9ef7ff', 4);
         return false;
       }
@@ -2889,6 +3136,7 @@
       if (hit) {
         if (hit.type === 'blackhole') spawnVortexSwirl(b.x, b.y, hit, b.color || '#ff7a9c', 6);
         else if (hit.type === 'star') spawnFlameBurst(b.x, b.y, 8);
+        else if (hit.type === 'planet') spawnPlanetImpact(b.x, b.y, hit);
         else spawnParticles(b.x, b.y, b.color || '#ff7a9c', 4);
         return false;
       }
@@ -2936,6 +3184,7 @@
           return true;
         }
         if (hit.type === 'star') spawnFlameBurst(r.x, r.y, 14);
+        else if (hit.type === 'planet') spawnPlanetImpact(r.x, r.y, hit);
         else spawnParticles(r.x, r.y, hit.color || '#9c9384', 10);
         playNoise(0.1, 0.06);
         return false;
@@ -3020,6 +3269,7 @@
           return true;
         }
         if (hit.type === 'star') spawnFlameBurst(en.x, en.y, 16);
+        else if (hit.type === 'planet') spawnPlanetImpact(en.x, en.y, hit);
         else spawnParticles(en.x, en.y, hit.color || ENEMY_KINDS[en.kind].color, 16);
         playNoise(0.14, 0.08);
         return false;
@@ -3040,6 +3290,7 @@
       if (hit) {
         if (hit.type === 'blackhole') spawnVortexSwirl(p.x, p.y, hit, POWERUP_KINDS[p.kind].color, 8);
         else if (hit.type === 'star') spawnFlameBurst(p.x, p.y, 10);
+        else if (hit.type === 'planet') spawnPlanetImpact(p.x, p.y, hit);
         else spawnParticles(p.x, p.y, POWERUP_KINDS[p.kind].color, 8);
         return false;
       }
@@ -3059,6 +3310,7 @@
       if (hit) {
         if (hit.type === 'blackhole') spawnVortexSwirl(p.x, p.y, hit, '#ff5a3d', 8);
         else if (hit.type === 'star') spawnFlameBurst(p.x, p.y, 10);
+        else if (hit.type === 'planet') spawnPlanetImpact(p.x, p.y, hit);
         else spawnParticles(p.x, p.y, '#ff5a3d', 8);
         return false;
       }
@@ -3116,6 +3368,7 @@
       p.life -= dt;
     });
     particles = particles.filter(function (p) { return p.life > 0; });
+    updateDebris(dt);
 
     // ---- collisions ----
     var i, j, r, b, en, pu;
@@ -3134,6 +3387,7 @@
             spawnParticles(r.x, r.y, '#9c9384', 16);
             spawnFlash(r.x, r.y, '#fff2d9', r.r * 0.9);
             playNoise(0.12, 0.09);
+            playTone({ freq: 260 - r.r * 2.5, duration: 0.1, type: 'square', vol: 0.05, slideTo: 90 - r.r });
             if (Math.random() < 0.12 * DIFF.powerupMult) spawnPowerUp(r.x, r.y);
             else if (Math.random() < 0.02) spawnBombPickup(r.x, r.y);
             rocks.splice(i, 1);
@@ -3158,7 +3412,9 @@
             spawnParticles(en.x, en.y, ENEMY_KINDS[en.kind].color, 20);
             spawnFlash(en.x, en.y, '#ffffff', en.r * 1.1);
             playNoise(0.18, 0.13);
-            playTone({ freq: 200, duration: 0.15, type: 'sawtooth', vol: 0.08, slideTo: 80 });
+            var deathSfx = ENEMY_DEATH_SFX[en.kind] || { freq: 200, type: 'sawtooth', slideTo: 80 };
+            playTone({ freq: deathSfx.freq, duration: 0.15, type: deathSfx.type, vol: 0.08, slideTo: deathSfx.slideTo });
+            if ((b.curveAccum || 0) > WANTED_CURVE_THRESHOLD) checkAchievement('wanted_curve');
             if (Math.random() < 0.18 * DIFF.powerupMult) spawnPowerUp(en.x, en.y);
             else if (Math.random() < 0.035) spawnBombPickup(en.x, en.y);
             enemies.splice(i, 1);
@@ -3169,7 +3425,7 @@
       }
     }
 
-    if (bossActive) {
+    if (bossActive && !bossActive.dying) {
       for (j = bullets.length - 1; j >= 0; j--) {
         b = bullets[j];
         if (dist(bossActive.x, bossActive.y, b.x, b.y) < bossActive.r) {
@@ -3177,12 +3433,12 @@
           bossActive.hp--;
           spawnParticles(b.x, b.y, '#ffffff', 4);
           if (bossActive.hp <= 0) {
-            defeatBoss();
+            startBossDeathSequence(bossActive);
             break;
           }
         }
       }
-      if (bossActive) {
+      if (bossActive && !bossActive.dying) {
         bossFillEl.style.width = Math.max(0, bossActive.hp / bossActive.maxHp * 100) + '%';
       }
     }
@@ -3227,7 +3483,7 @@
           }
         }
       }
-      if (bossActive) {
+      if (bossActive && !bossActive.dying) {
         for (j = enemyBullets.length - 1; j >= 0; j--) {
           b = enemyBullets[j];
           if (b.source === bossActive) continue;
@@ -3236,7 +3492,7 @@
             bossActive.hp--;
             spawnParticles(b.x, b.y, '#ffffff', 3);
             if (bossActive.hp <= 0) {
-              defeatBoss();
+              startBossDeathSequence(bossActive);
               break;
             } else {
               bossFillEl.style.width = Math.max(0, bossActive.hp / bossActive.maxHp * 100) + '%';
@@ -3425,10 +3681,14 @@
   function drawBoss(boss) {
     ctx.save();
     ctx.translate(boss.x, boss.y);
+    if (boss.dying) {
+      ctx.rotate(boss.tumbleRot || 0);
+      ctx.globalAlpha = 0.55 + 0.35 * Math.abs(Math.sin(elapsed * 18));
+    }
     var pulse = boss.telegraphing ? (0.6 + 0.4 * Math.sin(elapsed * 24)) : 1;
-    ctx.fillStyle = boss.color;
-    ctx.shadowColor = boss.color;
-    ctx.shadowBlur = 18 * pulse + 6;
+    ctx.fillStyle = boss.dying ? '#3a1a12' : boss.color;
+    ctx.shadowColor = boss.dying ? '#ff5a1a' : boss.color;
+    ctx.shadowBlur = boss.dying ? 24 : (18 * pulse + 6);
     if (boss.kind === 'bulwark') {
       ctx.beginPath();
       ctx.moveTo(-40, -10); ctx.lineTo(-22, -32); ctx.lineTo(22, -32); ctx.lineTo(40, -10);
@@ -3889,6 +4149,7 @@
 
     blastRings.forEach(drawBlastRing);
     drawSunburst();
+    debris.forEach(drawDebrisPiece);
 
     particles.forEach(function (p) {
       if (p.flash) {
