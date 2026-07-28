@@ -298,12 +298,13 @@
     left: 50%;
     bottom: 0%;
     transform: translate(-50%, 45%);
-    font-size: 13px;
+    font-size: 30px;
     color: #4ff0ff;
-    text-shadow: 0 0 6px #4ff0ff, 0 0 2px #fff;
+    text-shadow: 0 0 8px #4ff0ff, 0 0 3px #fff;
     transition: bottom 0.2s linear;
     line-height: 1;
     pointer-events: none;
+    z-index: 1;
   }
   #threatBar.critical .threat-target {
     animation: threatPulseIcon 0.6s ease-in-out infinite;
@@ -386,6 +387,14 @@
     padding: 44px 30px;
     text-align: center;
   }
+  .panel.victory {
+    border-color: rgba(255,194,61,0.65);
+    animation: panelVictoryGlow 2.2s ease-in-out infinite;
+  }
+  @keyframes panelVictoryGlow {
+    0%, 100% { box-shadow: 0 0 22px rgba(255,194,61,0.25); }
+    50% { box-shadow: 0 0 42px rgba(255,194,61,0.55); }
+  }
 
   h1 {
     font-family: 'Orbitron', sans-serif;
@@ -397,6 +406,15 @@
     margin: 0 0 14px;
   }
   h1.danger { color: var(--alert-magenta); text-shadow: 0 0 18px rgba(255, 61, 107, 0.55); }
+  h1.victory {
+    color: #ffc23d;
+    text-shadow: 0 0 10px rgba(255,194,61,0.75), 0 0 30px rgba(79,240,255,0.45);
+    animation: victoryGlow 1.8s ease-in-out infinite;
+  }
+  @keyframes victoryGlow {
+    0%, 100% { text-shadow: 0 0 10px rgba(255,194,61,0.75), 0 0 30px rgba(79,240,255,0.45); }
+    50% { text-shadow: 0 0 18px rgba(255,194,61,1), 0 0 46px rgba(79,240,255,0.75); }
+  }
 
   .subtitle {
     font-family: 'Rajdhani', sans-serif;
@@ -512,6 +530,59 @@
     box-shadow: 0 0 16px rgba(255,61,107,0.5);
   }
   .chaos-toggle:active { transform: scale(0.96); }
+
+  .ach-row {
+    display: flex; flex-wrap: wrap; justify-content: center; gap: 6px;
+    margin: 0 0 22px;
+  }
+  .ach-badge {
+    width: 30px; height: 30px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 14px;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.18);
+    filter: grayscale(1);
+    opacity: 0.35;
+    flex-shrink: 0;
+  }
+  .ach-badge.unlocked {
+    filter: none; opacity: 1;
+    border-color: rgba(255,194,61,0.7);
+    box-shadow: 0 0 10px rgba(255,194,61,0.5);
+    background: rgba(255,194,61,0.1);
+  }
+
+  #achievementToast {
+    position: fixed;
+    left: 50%;
+    bottom: max(112px, calc(env(safe-area-inset-bottom) + 112px));
+    transform: translate(-50%, 30px);
+    z-index: 30;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: linear-gradient(180deg, rgba(13,17,48,0.95), rgba(5,6,15,0.98));
+    border: 1px solid rgba(255,194,61,0.6);
+    border-radius: 12px;
+    padding: 10px 18px 10px 14px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.35s ease, transform 0.35s ease;
+    box-shadow: 0 0 24px rgba(255,194,61,0.35);
+    max-width: 86vw;
+    white-space: nowrap;
+  }
+  #achievementToast.show { opacity: 1; transform: translate(-50%, 0); }
+  .ach-icon { font-size: 26px; line-height: 1; filter: drop-shadow(0 0 6px rgba(255,194,61,0.8)); }
+  .ach-label {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 9px; font-weight: 700; letter-spacing: 1.5px;
+    color: #ffc23d;
+  }
+  .ach-name {
+    font-family: 'Rajdhani', sans-serif;
+    font-weight: 700; font-size: 0.95rem; color: #fff; letter-spacing: 0.5px;
+  }
 </style>
 </head>
 <body>
@@ -566,12 +637,22 @@
       <button class="diff-btn" data-diff="insane">INSANE</button>
     </div>
     <button class="chaos-toggle">CHAOS MODE: OFF</button>
+    <p class="caption">ACHIEVEMENTS</p>
+    <div class="ach-row" id="achRow"></div>
     <button class="btn" id="startBtn">LAUNCH</button>
   </div>
 </div>
 
+<div id="achievementToast">
+  <span class="ach-icon" id="achIcon">🏆</span>
+  <div class="ach-text">
+    <div class="ach-label">ACHIEVEMENT UNLOCKED</div>
+    <div class="ach-name" id="achName"></div>
+  </div>
+</div>
+
 <div id="gameOverScreen" class="overlay hidden">
-  <div class="panel">
+  <div class="panel" id="gameOverPanel">
     <h1 class="danger" id="gameOverTitle">GAME OVER</h1>
     <p class="caption">FINAL SCORE</p>
     <div id="finalScore">0</div>
@@ -601,6 +682,7 @@
   var startScreen = document.getElementById('startScreen');
   var gameOverScreen = document.getElementById('gameOverScreen');
   var gameOverTitleEl = document.getElementById('gameOverTitle');
+  var gameOverPanelEl = document.getElementById('gameOverPanel');
   var finalScoreEl = document.getElementById('finalScore');
   var bossStatEl = document.getElementById('bossStat');
   var startBtn = document.getElementById('startBtn');
@@ -628,6 +710,10 @@
   var chaosButtons = Array.prototype.slice.call(document.querySelectorAll('.chaos-toggle'));
   var bombBtn = document.getElementById('bombBtn');
   var bombCountEl = document.getElementById('bombCount');
+  var achRowEl = document.getElementById('achRow');
+  var achievementToastEl = document.getElementById('achievementToast');
+  var achIconEl = document.getElementById('achIcon');
+  var achNameEl = document.getElementById('achName');
 
   var dpr = Math.max(1, window.devicePixelRatio || 1);
   var width = 0, height = 0;
@@ -828,13 +914,61 @@
       },
       draw: function (en) {
         var pulse = 1 + Math.sin(elapsed * 5 + en.phase) * 0.14;
+        var wob = en.wobble || 0;
+        var baseColor = '#9aff3d';
+
+        ctx.save();
+        ctx.strokeStyle = hexToRgba(baseColor, 0.5);
+        ctx.lineWidth = 1.6;
+        ctx.lineCap = 'round';
+        for (var k = -1; k <= 1; k++) {
+          var tx0 = k * en.r * 0.32;
+          var sway = Math.sin(wob * 3.4 + k * 2.1 + en.phase) * en.r * 0.5;
+          ctx.beginPath();
+          ctx.moveTo(tx0, en.r * 0.35);
+          ctx.quadraticCurveTo(tx0 + sway, en.r * 1.15, tx0 + sway * 1.3, en.r * 1.85);
+          ctx.stroke();
+        }
+        ctx.restore();
+
+        ctx.globalAlpha = 0.6;
+        ctx.fillStyle = baseColor;
+        for (var f = -2; f <= 2; f++) {
+          var fx = f * en.r * 0.28;
+          var fy = en.r * (0.75 + 0.08 * Math.sin(wob * 5 + f));
+          ctx.beginPath();
+          ctx.ellipse(fx, fy, en.r * 0.14, en.r * 0.22, 0, 0, Math.PI * 2);
+          ctx.fill();
+        }
+
+        ctx.globalAlpha = 0.88;
+        ctx.fillStyle = baseColor;
         ctx.beginPath();
-        ctx.ellipse(0, 0, en.r * 0.8 * pulse, en.r * pulse, 0, 0, Math.PI * 2);
+        ctx.ellipse(0, 0, en.r * 0.82 * pulse, en.r * pulse, 0, 0, Math.PI * 2);
         ctx.fill();
-        ctx.globalAlpha = 0.65;
+
+        ctx.globalAlpha = 0.8;
+        ctx.strokeStyle = 'rgba(229,255,207,0.75)';
+        ctx.lineWidth = 1.3;
         ctx.beginPath();
-        ctx.ellipse(0, en.r * 0.45, en.r * 0.4, en.r * 0.22, 0, 0, Math.PI * 2);
+        ctx.ellipse(0, -en.r * 0.15, en.r * 0.7 * pulse, en.r * 0.55 * pulse, 0, Math.PI * 1.1, Math.PI * 1.9);
+        ctx.stroke();
+
+        ctx.globalAlpha = 0.7 + 0.25 * Math.sin(elapsed * 6 + en.phase);
+        ctx.fillStyle = '#eaffc2';
+        ctx.beginPath();
+        ctx.ellipse(0, en.r * 0.05, en.r * 0.3 * pulse, en.r * 0.24 * pulse, 0, 0, Math.PI * 2);
         ctx.fill();
+
+        ctx.globalAlpha = 1;
+        var eyeOffset = en.r * 0.26, eyeY = -en.r * 0.05;
+        ctx.fillStyle = '#0a2a08';
+        ctx.beginPath(); ctx.ellipse(-eyeOffset, eyeY, en.r * 0.1, en.r * 0.13, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.ellipse(eyeOffset, eyeY, en.r * 0.1, en.r * 0.13, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#eaffc2';
+        ctx.beginPath(); ctx.arc(-eyeOffset, eyeY, en.r * 0.04, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.arc(eyeOffset, eyeY, en.r * 0.04, 0, Math.PI * 2); ctx.fill();
+
         ctx.globalAlpha = 1;
       }
     }
@@ -851,6 +985,62 @@
   };
   var buffIcons = { rapid: '⚡', spread: '✺', ally: '✈' };
   var buffColors = { rapid: '#4ff0ff', spread: '#ffc23d', ally: '#8a7bff' };
+
+  // ---------- Achievements ----------
+  var ACHIEVEMENTS = {
+    two_birds: { name: 'TWO BIRDS, ONE STONE', desc: 'Destroy 2+ enemies with one bomb', icon: '🎯' },
+    overkill: { name: 'OVERKILL', desc: 'Destroy 4+ enemies with one bomb', icon: '💥' },
+    survivor: { name: 'SURVIVOR', desc: 'Reach the Void Titan', icon: '🚀' },
+    unstoppable: { name: 'UNSTOPPABLE', desc: "Push the Void Titan to its final phase", icon: '🔥' },
+    void_slayer: { name: 'VOID SLAYER', desc: 'Defeat the Void Titan', icon: '👑' },
+    flawless_titan: { name: 'FLAWLESS TITAN', desc: 'Defeat the Void Titan unscathed', icon: '🛡️' },
+    speed_demon: { name: 'SPEED DEMON', desc: 'Defeat the Void Titan in under 45s', icon: '⚡' },
+    hoarder: { name: 'HOARDER', desc: 'Carry 4 bombs at once', icon: '💣' }
+  };
+  var ACHIEVEMENTS_STORAGE_KEY = 'debrisRunAchievements';
+  var unlockedAchievements = {};
+
+  function loadAchievements() {
+    try {
+      var raw = window.localStorage && localStorage.getItem(ACHIEVEMENTS_STORAGE_KEY);
+      unlockedAchievements = raw ? JSON.parse(raw) : {};
+    } catch (e) { unlockedAchievements = {}; }
+  }
+  function saveAchievements() {
+    try { if (window.localStorage) localStorage.setItem(ACHIEVEMENTS_STORAGE_KEY, JSON.stringify(unlockedAchievements)); } catch (e) {}
+  }
+  function renderAchievementRow() {
+    if (!achRowEl) return;
+    achRowEl.innerHTML = '';
+    Object.keys(ACHIEVEMENTS).forEach(function (id) {
+      var def = ACHIEVEMENTS[id];
+      var unlocked = !!unlockedAchievements[id];
+      var el = document.createElement('div');
+      el.className = 'ach-badge' + (unlocked ? ' unlocked' : '');
+      el.textContent = unlocked ? def.icon : '❔';
+      el.title = unlocked ? (def.name + ' — ' + def.desc) : '???';
+      achRowEl.appendChild(el);
+    });
+  }
+  var achToastTimeout = null;
+  function showAchievementToast(def) {
+    if (!def) return;
+    achIconEl.textContent = def.icon;
+    achNameEl.textContent = def.name;
+    achievementToastEl.classList.add('show');
+    playTone({ freq: 660, duration: 0.12, type: 'sine', vol: 0.1, slideTo: 990 });
+    setTimeout(function () { playTone({ freq: 990, duration: 0.2, type: 'sine', vol: 0.1, slideTo: 1320 }); }, 120);
+    if (navigator.vibrate) navigator.vibrate([20, 30, 40]);
+    if (achToastTimeout) clearTimeout(achToastTimeout);
+    achToastTimeout = setTimeout(function () { achievementToastEl.classList.remove('show'); }, 3200);
+  }
+  function checkAchievement(id) {
+    if (unlockedAchievements[id]) return;
+    unlockedAchievements[id] = true;
+    saveAchievements();
+    showAchievementToast(ACHIEVEMENTS[id]);
+    renderAchievementRow();
+  }
 
   // ---------- Boss patterns ----------
   var BOSS_PATTERNS = {
@@ -985,7 +1175,11 @@
   var superbossMaxPhaseReached = 0;
   var superbossActiveStartTime = 0;
   var superbossDefeatTime = 0;
+  var superbossTookDamage = false;
+  var superbossPowerupTimer = 0;
   var shakeTime = 0, shakeMag = 0;
+  var hitstopTimer = 0;
+  var sunburstTimer = 0, sunburstX = 0, sunburstY = 0, sunburstMax = 1;
   var warpStreaks = [];
 
   var player = { x: 0, y: 0, targetX: 0, targetY: 0, radius: 16, invincible: 0 };
@@ -1020,6 +1214,7 @@
   var bombs = [];
   var blastRings = [];
   var bombCount = 0;
+  var BOMB_MAX_RANGE = 340;
 
   var STAR_TINTS = ['#ffffff', '#ffffff', '#ffffff', '#bcd9ff', '#ffe9c2'];
 
@@ -1307,6 +1502,17 @@
     powerUps.push({ kind: kind, x: x, y: y, vx: 0, vy: rand(55, 75), r: 14 });
   }
 
+  function spawnSuperbossBonusPowerup(x, y) {
+    var roll = Math.random();
+    var kind;
+    if (roll < 0.28) kind = 'shield';
+    else if (roll < 0.5) kind = 'life';
+    else if (roll < 0.75) kind = 'rapid';
+    else if (roll < 0.9) kind = 'spread';
+    else kind = 'ally';
+    powerUps.push({ kind: kind, x: x, y: y, vx: 0, vy: rand(55, 75), r: 14 });
+  }
+
   function collectPowerUp(pu) {
     var def = POWERUP_KINDS[pu.kind];
     spawnParticles(pu.x, pu.y, def.color, 14);
@@ -1361,6 +1567,7 @@
     spawnParticles(p.x, p.y, '#ff5a3d', 16);
     if (navigator.vibrate) navigator.vibrate(25);
     playTone({ freq: 300, duration: 0.2, type: 'sine', vol: 0.1, slideTo: 700 });
+    if (bombCount >= 4) checkAchievement('hoarder');
   }
 
   function fireBomb() {
@@ -1371,7 +1578,7 @@
     }
     bombCount--;
     updateBombUI();
-    bombs.push({ x: player.x, y: player.y - 16, vx: 0, vy: -400 });
+    bombs.push({ x: player.x, y: player.y - 16, vx: 0, vy: -400, startX: player.x, startY: player.y - 16 });
     playTone({ freq: 180, duration: 0.28, type: 'sawtooth', vol: 0.16, slideTo: 55 });
     playNoise(0.15, 0.1);
     if (navigator.vibrate) navigator.vibrate(25);
@@ -1403,6 +1610,7 @@
     playTone({ freq: 60, duration: 0.75, type: 'sawtooth', vol: 0.22, slideTo: 25 });
     if (navigator.vibrate) navigator.vibrate([90, 50, 160, 60, 90]);
 
+    var bombKills = 0;
     for (var i = rocks.length - 1; i >= 0; i--) {
       var rk = rocks[i];
       if (rk.consumedBy) continue;
@@ -1410,6 +1618,7 @@
         score += Math.round((rk.r > 26 ? 15 : 10) * DIFF.scoreMult);
         spawnParticles(rk.x, rk.y, '#9c9384', 10);
         rocks.splice(i, 1);
+        bombKills++;
       }
     }
     for (var j = enemies.length - 1; j >= 0; j--) {
@@ -1419,8 +1628,11 @@
         score += Math.round(ENEMY_KINDS[en2.kind].score * DIFF.scoreMult);
         spawnParticles(en2.x, en2.y, ENEMY_KINDS[en2.kind].color, 12);
         enemies.splice(j, 1);
+        bombKills++;
       }
     }
+    if (bombKills >= 4) checkAchievement('overkill');
+    else if (bombKills >= 2) checkAchievement('two_birds');
     enemyBullets = enemyBullets.filter(function (b) { return dist(x, y, b.x, b.y) >= blastR; });
     if (bossActive && dist(x, y, bossActive.x, bossActive.y) < blastR + bossActive.r) {
       bossActive.hp -= 32;
@@ -1694,10 +1906,44 @@
     updateHUD();
   }
 
-  // ---------- Screen shake / color helpers ----------
+  // ---------- Screen shake / hitstop / sunburst / color helpers ----------
   function triggerShake(duration, magnitude) {
     shakeTime = Math.max(shakeTime, duration);
     shakeMag = Math.max(shakeMag, magnitude);
+  }
+
+  function triggerHitstop(duration) {
+    hitstopTimer = Math.max(hitstopTimer, duration);
+  }
+
+  function triggerSunburst(x, y, duration) {
+    sunburstTimer = duration;
+    sunburstMax = duration;
+    sunburstX = x;
+    sunburstY = y;
+  }
+
+  function drawSunburst() {
+    if (sunburstTimer <= 0) return;
+    var alpha = Math.max(0, sunburstTimer / sunburstMax);
+    ctx.save();
+    ctx.translate(sunburstX, sunburstY);
+    ctx.globalCompositeOperation = 'lighter';
+    var rayCount = 16;
+    var len = Math.max(width, height) * 1.2;
+    for (var i = 0; i < rayCount; i++) {
+      var a = (i / rayCount) * Math.PI * 2 + elapsed * 0.6;
+      var grad = ctx.createLinearGradient(0, 0, Math.cos(a) * len, Math.sin(a) * len);
+      grad.addColorStop(0, 'rgba(255,255,255,' + (0.24 * alpha) + ')');
+      grad.addColorStop(1, 'rgba(255,255,255,0)');
+      ctx.strokeStyle = grad;
+      ctx.lineWidth = 8;
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.lineTo(Math.cos(a) * len, Math.sin(a) * len);
+      ctx.stroke();
+    }
+    ctx.restore();
   }
 
   function hexToRgba(hex, a) {
@@ -1818,9 +2064,11 @@
     superbossSeqTimer = 0;
     superbossSequenceActive = true;
     nextBossAt = Infinity;
+    stopGameplayMusic();
     showBanner('⚡ HYPERSPEED CHARGING', '#4ff0ff');
     playTone({ freq: 90, duration: 1.3, type: 'sine', vol: 0.12, slideTo: 640 });
     triggerShake(0.3, 2);
+    checkAchievement('survivor');
   }
 
   function updateSuperbossChargeup(dt) {
@@ -1904,6 +2152,8 @@
     updatePhaseDots(1);
     superbossMaxPhaseReached = 1;
     superbossActiveStartTime = elapsed;
+    superbossTookDamage = false;
+    superbossPowerupTimer = rand(7, 10);
     showBanner(superboss.name, superboss.color);
   }
 
@@ -2016,6 +2266,12 @@
     boss.stepTimer -= dt;
     tickSuperbossStep(boss, dt);
     if (boss.stepTimer <= 0) advanceSuperbossStep(boss);
+
+    superbossPowerupTimer -= dt;
+    if (superbossPowerupTimer <= 0) {
+      superbossPowerupTimer = rand(11, 15);
+      spawnSuperbossBonusPowerup(rand(60, Math.max(61, width - 60)), -20);
+    }
   }
 
   function checkSuperbossPhaseTransition() {
@@ -2033,6 +2289,7 @@
     boss.transitionTimer = 1.8;
     boss.pendingPhase = nextPhase;
     boss.coreFlicker = 0;
+    triggerHitstop(0.09);
     triggerShake(1.0, 9);
     playNoise(0.6, 0.2);
     playTone({ freq: 90, duration: 1.1, type: 'sawtooth', vol: 0.2, slideTo: 30 });
@@ -2040,6 +2297,8 @@
     var def = SUPERBOSS_PHASES[nextPhase];
     showBanner(def.name, def.color);
     showCinematicLine(nextPhase === 3 ? 'FINAL FORM' : 'PHASE 2', def.color, true);
+    if (nextPhase === 3) checkAchievement('unstoppable');
+    spawnSuperbossBonusPowerup(boss.x, boss.y);
     enemyBullets = enemyBullets.filter(function (eb) { return eb.source !== boss; });
     updatePhaseDots(nextPhase);
     superbossMaxPhaseReached = Math.max(superbossMaxPhaseReached, nextPhase);
@@ -2070,7 +2329,9 @@
     spawnFlash(bx, by, '#ffffff', 140);
     spawnBlastRing(bx, by, 300, '#ffffff', 0.7, 0);
     spawnBlastRing(bx, by, 420, color, 1.0, 0.12);
+    triggerHitstop(0.16);
     triggerShake(1.4, 14);
+    triggerSunburst(bx, by, 2.6);
     playNoise(0.7, 0.3);
     playTone({ freq: 220, duration: 1.0, type: 'sawtooth', vol: 0.2, slideTo: 40 });
     if (navigator.vibrate) navigator.vibrate([80, 60, 80, 60, 240]);
@@ -2083,11 +2344,18 @@
     bossBarEl.classList.remove('superboss');
     bossPhaseDotsEl.classList.add('hidden');
     stopSuperbossMusic();
+    superbossSequenceActive = true;
+    enemyBullets = [];
     superbossDefeatTime = elapsed;
     superboss = null;
     superbossState = 'defeated';
+    checkAchievement('void_slayer');
+    if (elapsed - superbossActiveStartTime < 45) checkAchievement('speed_demon');
+    if (!superbossTookDamage) checkAchievement('flawless_titan');
     updateHUD();
-    setTimeout(function () { if (state === 'playing') cinematicTextEl.classList.remove('show'); }, 2200);
+    setTimeout(function () {
+      if (state === 'playing') endGame('VOID TITAN VANQUISHED');
+    }, 2800);
   }
 
   // ---------- Victory fanfare ----------
@@ -2123,6 +2391,69 @@
     if (stepIndex % 2 === 0) playNoise(0.06, 0.05);
     if (stepIndex % 4 === 0) playTone({ freq: note * 2, duration: 0.5, type: 'triangle', vol: 0.06 });
     setTimeout(function () { scheduleSuperbossMusic(gen, stepIndex + 1); }, 260);
+  }
+
+  // ---------- Gameplay music: remix of Star Fox 64 "Mission Failed" motif ----------
+  var GAMEPLAY_LOOP_LEN = 8.727;
+  var GAMEPLAY_MELODY = [
+    { t: 0.000, f: 493.88, d: 0.35 },
+    { t: 0.409, f: 587.33, d: 1.20 },
+    { t: 1.909, f: 523.25, d: 0.15 },
+    { t: 2.045, f: 493.88, d: 0.14 },
+    { t: 2.182, f: 440.00, d: 0.35 },
+    { t: 2.591, f: 523.25, d: 1.45 },
+    { t: 4.3635, f: 493.88, d: 0.38 },
+    { t: 4.7725, f: 587.33, d: 1.20 },
+    { t: 6.2725, f: 523.25, d: 0.10 },
+    { t: 6.4085, f: 587.33, d: 0.14 },
+    { t: 6.5455, f: 659.26, d: 0.40 },
+    { t: 6.9545, f: 523.25, d: 1.45 }
+  ];
+  var gameplayMusicActive = false;
+  var gameplayMusicGen = 0;
+  var gameplayMusicTimeouts = [];
+
+  function clearGameplayMusicTimeouts() {
+    gameplayMusicTimeouts.forEach(function (id) { clearTimeout(id); });
+    gameplayMusicTimeouts = [];
+  }
+  function gameplayMusicShouldPlay() {
+    return gameplayMusicActive && state === 'playing' && superbossState === 'idle';
+  }
+  function startGameplayMusic() {
+    gameplayMusicActive = true;
+    gameplayMusicGen++;
+    scheduleGameplayMusicLoop(gameplayMusicGen);
+  }
+  function stopGameplayMusic() {
+    gameplayMusicActive = false;
+    gameplayMusicGen++;
+    clearGameplayMusicTimeouts();
+  }
+  function scheduleGameplayMusicLoop(gen) {
+    if (gen !== gameplayMusicGen || !gameplayMusicShouldPlay()) return;
+    GAMEPLAY_MELODY.forEach(function (n) {
+      var id = setTimeout(function () {
+        if (gen !== gameplayMusicGen || !gameplayMusicShouldPlay()) return;
+        playTone({ freq: n.f, duration: n.d, type: 'triangle', vol: 0.07, slideTo: n.f * 1.004 });
+      }, n.t * 1000);
+      gameplayMusicTimeouts.push(id);
+    });
+    var beatCount = 16;
+    var beatDur = GAMEPLAY_LOOP_LEN / beatCount;
+    for (var i = 0; i < beatCount; i++) {
+      (function (i) {
+        var id = setTimeout(function () {
+          if (gen !== gameplayMusicGen || !gameplayMusicShouldPlay()) return;
+          var f = (i % 4 === 2) ? 164.81 : 110.00;
+          playTone({ freq: f, duration: beatDur * 0.8, type: 'sawtooth', vol: 0.045 });
+          if (i % 2 === 0) playNoise(0.03, 0.018);
+        }, i * beatDur * 1000);
+        gameplayMusicTimeouts.push(id);
+      })(i);
+    }
+    var loopId = setTimeout(function () { scheduleGameplayMusicLoop(gen); }, GAMEPLAY_LOOP_LEN * 1000);
+    gameplayMusicTimeouts.push(loopId);
   }
 
   // ---------- Banner ----------
@@ -2214,6 +2545,7 @@
   function loseLife() {
     if (superbossSequenceActive) return;
     if (player.invincible > 0) return;
+    if (superbossState === 'active') superbossTookDamage = true;
     if (shieldCharges > 0) {
       shieldCharges--;
       player.invincible = 45;
@@ -2241,6 +2573,9 @@
   function endGame(causeTitle) {
     state = 'gameover';
     gameOverTitleEl.textContent = causeTitle || 'GAME OVER';
+    gameOverTitleEl.classList.toggle('victory', superbossState === 'defeated');
+    gameOverTitleEl.classList.toggle('danger', superbossState !== 'defeated');
+    gameOverPanelEl.classList.toggle('victory', superbossState === 'defeated');
     finalScoreEl.textContent = score;
 
     var rows = [];
@@ -2263,6 +2598,7 @@
     heatBarEl.classList.remove('show');
     bombBtn.classList.add('hidden');
     stopSuperbossMusic();
+    stopGameplayMusic();
     letterboxTopEl.classList.remove('show');
     letterboxBottomEl.classList.remove('show');
     cinematicTextEl.classList.remove('show');
@@ -2304,8 +2640,13 @@
     superbossMaxPhaseReached = 0;
     superbossActiveStartTime = 0;
     superbossDefeatTime = 0;
+    superbossTookDamage = false;
+    superbossPowerupTimer = 0;
     warpStreaks = [];
+    hitstopTimer = 0;
+    sunburstTimer = 0;
     stopSuperbossMusic();
+    startGameplayMusic();
     letterboxTopEl.classList.remove('show');
     letterboxBottomEl.classList.remove('show');
     cinematicTextEl.classList.remove('show');
@@ -2339,6 +2680,7 @@
     frame++;
 
     if (shakeTime > 0) shakeTime = Math.max(0, shakeTime - dt);
+    if (sunburstTimer > 0) sunburstTimer = Math.max(0, sunburstTimer - dt);
 
     checkZoneUnlocks();
     updateThreatUI();
@@ -2738,7 +3080,10 @@
     });
     for (i = bombs.length - 1; i >= 0; i--) {
       var bm = bombs[i];
-      if (!(bm.y > -30 && bm.y < height + 30 && bm.x > -30 && bm.x < width + 30)) {
+      var bmOut = !(bm.y > -30 && bm.y < height + 30 && bm.x > -30 && bm.x < width + 30);
+      var bmTraveled = dist(bm.startX, bm.startY, bm.x, bm.y);
+      if (bmOut || bmTraveled >= BOMB_MAX_RANGE) {
+        detonateBomb(bm.x, bm.y);
         bombs.splice(i, 1);
         continue;
       }
@@ -2752,6 +3097,7 @@
         if (dist(bm.x, bm.y, enemies[j].x, enemies[j].y) < enemies[j].r + 6) bombHit = true;
       }
       if (!bombHit && bossActive && dist(bm.x, bm.y, bossActive.x, bossActive.y) < bossActive.r + 6) bombHit = true;
+      if (!bombHit && superboss && !superboss.entering && dist(bm.x, bm.y, superboss.x, superboss.y) < superboss.r + 6) bombHit = true;
       if (!bombHit && hazardHitTest(bm.x, bm.y)) bombHit = true;
       if (bombHit) {
         detonateBomb(bm.x, bm.y);
@@ -3542,6 +3888,7 @@
     if (superboss) drawSuperboss(superboss);
 
     blastRings.forEach(drawBlastRing);
+    drawSunburst();
 
     particles.forEach(function (p) {
       if (p.flash) {
@@ -3608,6 +3955,12 @@
     if (state !== 'playing') return;
     var dt = Math.min(0.033, (now - lastTime) / 1000);
     lastTime = now;
+    if (hitstopTimer > 0) {
+      hitstopTimer -= dt;
+      render();
+      requestAnimationFrame(loop);
+      return;
+    }
     update(dt);
     render();
     requestAnimationFrame(loop);
@@ -3628,6 +3981,8 @@
   }
 
   // ---------- Init ----------
+  loadAchievements();
+  renderAchievementRow();
   window.addEventListener('resize', handleResize);
   if (window.visualViewport) window.visualViewport.addEventListener('resize', handleResize);
   handleResize();
