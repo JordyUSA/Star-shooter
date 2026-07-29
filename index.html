@@ -366,6 +366,24 @@
   #bossBar.superboss .boss-name { font-size: 13px; letter-spacing: 3px; text-shadow: 0 0 10px currentColor, 0 0 4px rgba(0,0,0,0.9); }
   #bossBar.superboss .boss-track { height: 14px; box-shadow: 0 0 18px rgba(255,32,80,0.5); }
 
+  #pauseBtn {
+    position: fixed;
+    top: calc(max(14px, env(safe-area-inset-top)) + 44px);
+    right: 62px;
+    z-index: 10;
+    pointer-events: auto;
+    width: 38px; height: 38px;
+    border-radius: 50%;
+    border: 1px solid rgba(79, 240, 255, 0.35);
+    background: rgba(13, 17, 48, 0.75);
+    color: #fff;
+    font-size: 14px;
+    display: flex; align-items: center; justify-content: center;
+    padding: 0;
+    appearance: none; -webkit-appearance: none;
+  }
+  #pauseBtn:active { transform: scale(0.92); }
+
   .overlay {
     position: fixed; inset: 0;
     display: flex; align-items: center; justify-content: center;
@@ -374,7 +392,121 @@
     padding: 24px;
     overflow-y: auto;
   }
+  .overlay.see-through {
+    background: radial-gradient(ellipse at 50% 40%, rgba(13,17,48,0.28), rgba(2,2,10,0.5));
+  }
+  .overlay.see-through .panel {
+    background: linear-gradient(180deg, rgba(13,17,48,0.72), rgba(5,6,15,0.78));
+    -webkit-backdrop-filter: blur(3px);
+    backdrop-filter: blur(3px);
+  }
   .hidden { display: none !important; }
+
+  .settings-block { margin: 0 0 20px; }
+  .slider-row {
+    display: flex; align-items: center; gap: 10px;
+    margin: 0 0 12px;
+  }
+  .slider-row label {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 0.6rem; font-weight: 700; letter-spacing: 1px;
+    color: rgba(255,255,255,0.7);
+    width: 58px; text-align: left; flex-shrink: 0;
+  }
+  .slider-row input[type="range"] {
+    flex: 1; min-width: 0; height: 4px;
+    appearance: none; -webkit-appearance: none;
+    background: rgba(255,255,255,0.18);
+    border-radius: 999px;
+    outline: none;
+  }
+  .slider-row input[type="range"]::-webkit-slider-thumb {
+    appearance: none; -webkit-appearance: none;
+    width: 16px; height: 16px; border-radius: 50%;
+    background: var(--signal-cyan);
+    box-shadow: 0 0 8px rgba(79,240,255,0.7);
+    cursor: pointer;
+  }
+  .slider-row input[type="range"]::-moz-range-thumb {
+    width: 16px; height: 16px; border-radius: 50%; border: none;
+    background: var(--signal-cyan);
+    box-shadow: 0 0 8px rgba(79,240,255,0.7);
+    cursor: pointer;
+  }
+  .slider-val {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 0.58rem; color: var(--signal-cyan);
+    width: 30px; text-align: right; flex-shrink: 0;
+  }
+  .toggle-btn {
+    display: block; width: 100%;
+    font-family: 'Orbitron', sans-serif;
+    font-size: 0.64rem; font-weight: 700; letter-spacing: 1px;
+    color: rgba(255,255,255,0.75);
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(79,240,255,0.35);
+    border-radius: 999px;
+    padding: 9px 14px;
+    appearance: none; -webkit-appearance: none;
+  }
+  .toggle-btn.active {
+    background: var(--signal-cyan); color: var(--void);
+    border-color: var(--signal-cyan);
+    box-shadow: 0 0 14px rgba(79,240,255,0.45);
+  }
+  .toggle-btn:active { transform: scale(0.96); }
+
+  .btn.secondary {
+    background: transparent;
+    color: var(--signal-cyan);
+    border: 1px solid rgba(79,240,255,0.55);
+    box-shadow: none;
+    font-size: 0.85rem;
+    padding: 12px 24px;
+  }
+  .btn.secondary:active { background: rgba(79,240,255,0.15); }
+  .btn-row {
+    display: flex; flex-direction: column; gap: 10px; align-items: center;
+  }
+
+  #achDetail {
+    position: fixed; inset: 0;
+    z-index: 40;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(2,2,10,0.72);
+    padding: 24px;
+  }
+  .ach-detail-card {
+    max-width: 300px; width: 100%;
+    background: linear-gradient(180deg, rgba(13,17,48,0.97), rgba(5,6,15,0.99));
+    border: 1px solid rgba(255,194,61,0.55);
+    border-radius: 14px;
+    padding: 26px 22px;
+    text-align: center;
+    box-shadow: 0 0 30px rgba(255,194,61,0.25);
+  }
+  .ach-detail-card.locked { border-color: rgba(255,255,255,0.25); box-shadow: none; }
+  .ach-detail-icon { font-size: 46px; line-height: 1; margin-bottom: 10px; }
+  .ach-detail-card.locked .ach-detail-icon { filter: grayscale(1); opacity: 0.5; }
+  .ach-detail-name {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 0.9rem; font-weight: 700; letter-spacing: 1.5px;
+    color: #ffc23d; margin-bottom: 8px;
+  }
+  .ach-detail-card.locked .ach-detail-name { color: rgba(255,255,255,0.6); }
+  .ach-detail-desc {
+    font-family: 'Rajdhani', sans-serif;
+    font-size: 0.95rem; font-weight: 500;
+    color: rgba(255,255,255,0.8); line-height: 1.45; margin-bottom: 12px;
+  }
+  .ach-detail-status {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 0.58rem; letter-spacing: 1.5px; font-weight: 700;
+    color: #3dffa0; margin-bottom: 18px;
+  }
+  .ach-detail-card.locked .ach-detail-status { color: rgba(255,255,255,0.45); }
+  .ach-badge { cursor: pointer; }
+  .ach-badge:active { transform: scale(0.9); }
 
   .panel {
     position: relative;
@@ -432,7 +564,7 @@
     color: rgba(255,255,255,0.55);
     margin: 0 0 2px;
   }
-  #finalScore {
+  #finalScore, #victoryScore {
     font-family: 'Orbitron', sans-serif;
     font-weight: 800;
     font-size: 3rem;
@@ -440,14 +572,14 @@
     text-shadow: 0 0 22px rgba(255, 194, 61, 0.55);
     margin: 2px 0 6px;
   }
-  #bossStat {
+  #bossStat, #victoryStat {
     display: flex;
     flex-direction: column;
     gap: 4px;
     margin: 0 0 26px;
     min-height: 1em;
   }
-  #bossStat:empty { margin: 0 0 6px; }
+  #bossStat:empty, #victoryStat:empty { margin: 0 0 6px; }
   .stat-row {
     font-family: 'Rajdhani', sans-serif;
     font-weight: 600;
@@ -593,6 +725,7 @@
 <div id="cinematicText"></div>
 <div id="banner"></div>
 <button id="muteBtn" aria-label="Toggle sound">🔊</button>
+<button id="pauseBtn" class="hidden" aria-label="Pause game">⏸</button>
 <button id="bombBtn" class="hidden" aria-label="Fire bomb">
   <span class="bomb-icon">💣</span>
   <span class="bomb-count" id="bombCount">0</span>
@@ -638,7 +771,7 @@
     </div>
     <button class="chaos-toggle">CHAOS MODE: OFF</button>
     <p class="caption">ACHIEVEMENTS</p>
-    <div class="ach-row" id="achRow"></div>
+    <div class="ach-row" id="achRow" data-ach-row></div>
     <button class="btn" id="startBtn">LAUNCH</button>
   </div>
 </div>
@@ -656,7 +789,7 @@
     <h1 class="danger" id="gameOverTitle">GAME OVER</h1>
     <p class="caption">FINAL SCORE</p>
     <div id="finalScore">0</div>
-    <p class="caption" id="bossStat"></p>
+    <div class="caption" id="bossStat"></div>
     <p class="caption">DIFFICULTY</p>
     <div class="diff-row">
       <button class="diff-btn" data-diff="veryeasy">VERY EASY</button>
@@ -666,7 +799,63 @@
       <button class="diff-btn" data-diff="insane">INSANE</button>
     </div>
     <button class="chaos-toggle">CHAOS MODE: OFF</button>
+    <p class="caption">ACHIEVEMENTS</p>
+    <div class="ach-row" data-ach-row></div>
     <button class="btn" id="restartBtn">PLAY AGAIN</button>
+  </div>
+</div>
+
+<div id="pauseScreen" class="overlay see-through hidden">
+  <div class="panel">
+    <h1>PAUSED</h1>
+    <div class="settings-block">
+      <p class="caption">AUDIO</p>
+      <div class="slider-row">
+        <label for="sfxSlider">SFX</label>
+        <input type="range" id="sfxSlider" min="0" max="100" value="80">
+        <span class="slider-val" id="sfxVal">80</span>
+      </div>
+      <div class="slider-row">
+        <label for="musicSlider">MUSIC</label>
+        <input type="range" id="musicSlider" min="0" max="100" value="60">
+        <span class="slider-val" id="musicVal">60</span>
+      </div>
+    </div>
+    <div class="settings-block">
+      <p class="caption">CONTROLS</p>
+      <button class="toggle-btn" id="joystickToggle">VIRTUAL JOYSTICK: OFF</button>
+    </div>
+    <p class="caption">ACHIEVEMENTS</p>
+    <div class="ach-row" data-ach-row></div>
+    <div class="btn-row">
+      <button class="btn" id="resumeBtn">RESUME</button>
+      <button class="btn secondary" id="quitBtn">QUIT TO MENU</button>
+    </div>
+  </div>
+</div>
+
+<div id="victoryScreen" class="overlay see-through hidden">
+  <div class="panel victory">
+    <h1 class="victory">VICTORY</h1>
+    <p class="caption">FINAL SCORE</p>
+    <div id="victoryScore">0</div>
+    <div class="caption" id="victoryStat"></div>
+    <p class="caption">ACHIEVEMENTS</p>
+    <div class="ach-row" data-ach-row></div>
+    <div class="btn-row">
+      <button class="btn" id="nextLevelBtn">NEXT LEVEL</button>
+      <button class="btn secondary" id="replayLevelBtn">REPLAY LEVEL</button>
+    </div>
+  </div>
+</div>
+
+<div id="achDetail" class="hidden">
+  <div class="ach-detail-card" id="achDetailCard">
+    <div class="ach-detail-icon" id="achDetailIcon">🏆</div>
+    <div class="ach-detail-name" id="achDetailName">ACHIEVEMENT</div>
+    <div class="ach-detail-desc" id="achDetailDesc"></div>
+    <div class="ach-detail-status" id="achDetailStatus"></div>
+    <button class="btn secondary" id="achDetailClose">CLOSE</button>
   </div>
 </div>
 
@@ -711,6 +900,28 @@
   var bombBtn = document.getElementById('bombBtn');
   var bombCountEl = document.getElementById('bombCount');
   var achRowEl = document.getElementById('achRow');
+  var achRowEls = Array.prototype.slice.call(document.querySelectorAll('[data-ach-row]'));
+  var pauseBtn = document.getElementById('pauseBtn');
+  var pauseScreen = document.getElementById('pauseScreen');
+  var resumeBtn = document.getElementById('resumeBtn');
+  var quitBtn = document.getElementById('quitBtn');
+  var sfxSlider = document.getElementById('sfxSlider');
+  var musicSlider = document.getElementById('musicSlider');
+  var sfxValEl = document.getElementById('sfxVal');
+  var musicValEl = document.getElementById('musicVal');
+  var joystickToggleBtn = document.getElementById('joystickToggle');
+  var victoryScreen = document.getElementById('victoryScreen');
+  var victoryScoreEl = document.getElementById('victoryScore');
+  var victoryStatEl = document.getElementById('victoryStat');
+  var nextLevelBtn = document.getElementById('nextLevelBtn');
+  var replayLevelBtn = document.getElementById('replayLevelBtn');
+  var achDetailEl = document.getElementById('achDetail');
+  var achDetailCardEl = document.getElementById('achDetailCard');
+  var achDetailIconEl = document.getElementById('achDetailIcon');
+  var achDetailNameEl = document.getElementById('achDetailName');
+  var achDetailDescEl = document.getElementById('achDetailDesc');
+  var achDetailStatusEl = document.getElementById('achDetailStatus');
+  var achDetailCloseBtn = document.getElementById('achDetailClose');
   var achievementToastEl = document.getElementById('achievementToast');
   var achIconEl = document.getElementById('achIcon');
   var achNameEl = document.getElementById('achName');
@@ -731,6 +942,23 @@
   // ---------- Audio (lightweight synth, no external files) ----------
   var audioCtx = null;
   var muted = false;
+  var SETTINGS_STORAGE_KEY = 'debrisRunSettings';
+  var settings = { sfxVolume: 0.8, musicVolume: 0.6, joystick: false };
+
+  function loadSettings() {
+    try {
+      var raw = window.localStorage && localStorage.getItem(SETTINGS_STORAGE_KEY);
+      if (raw) {
+        var parsed = JSON.parse(raw);
+        if (typeof parsed.sfxVolume === 'number') settings.sfxVolume = Math.max(0, Math.min(1, parsed.sfxVolume));
+        if (typeof parsed.musicVolume === 'number') settings.musicVolume = Math.max(0, Math.min(1, parsed.musicVolume));
+        if (typeof parsed.joystick === 'boolean') settings.joystick = parsed.joystick;
+      }
+    } catch (e) {}
+  }
+  function saveSettings() {
+    try { if (window.localStorage) localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(settings)); } catch (e) {}
+  }
 
   function ensureAudio() {
     if (audioCtx) {
@@ -744,10 +972,12 @@
 
   function playTone(opts) {
     if (muted || !audioCtx) return;
+    var bus = opts.music ? settings.musicVolume : settings.sfxVolume;
+    if (bus <= 0) return;
     var freq = opts.freq || 440;
     var duration = opts.duration || 0.1;
     var type = opts.type || 'square';
-    var vol = opts.vol || 0.1;
+    var vol = (opts.vol || 0.1) * bus;
     var slideTo = opts.slideTo || null;
     var osc = audioCtx.createOscillator();
     var gain = audioCtx.createGain();
@@ -761,8 +991,11 @@
     osc.stop(audioCtx.currentTime + duration);
   }
 
-  function playNoise(duration, vol) {
+  function playNoise(duration, vol, isMusic) {
     if (muted || !audioCtx) return;
+    var bus = isMusic ? settings.musicVolume : settings.sfxVolume;
+    if (bus <= 0) return;
+    vol = vol * bus;
     var bufferSize = Math.floor(audioCtx.sampleRate * duration);
     var buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
     var data = buffer.getChannelData(0);
@@ -1037,17 +1270,39 @@
     try { if (window.localStorage) localStorage.setItem(ACHIEVEMENTS_STORAGE_KEY, JSON.stringify(unlockedAchievements)); } catch (e) {}
   }
   function renderAchievementRow() {
-    if (!achRowEl) return;
-    achRowEl.innerHTML = '';
-    Object.keys(ACHIEVEMENTS).forEach(function (id) {
-      var def = ACHIEVEMENTS[id];
-      var unlocked = !!unlockedAchievements[id];
-      var el = document.createElement('div');
-      el.className = 'ach-badge' + (unlocked ? ' unlocked' : '');
-      el.textContent = unlocked ? def.icon : '❔';
-      el.title = unlocked ? (def.name + ' — ' + def.desc) : '???';
-      achRowEl.appendChild(el);
+    achRowEls.forEach(function (row) {
+      row.innerHTML = '';
+      Object.keys(ACHIEVEMENTS).forEach(function (id) {
+        var def = ACHIEVEMENTS[id];
+        var unlocked = !!unlockedAchievements[id];
+        var el = document.createElement('div');
+        el.className = 'ach-badge' + (unlocked ? ' unlocked' : '');
+        el.textContent = unlocked ? def.icon : '❔';
+        el.title = unlocked ? def.name : 'Locked — tap for hint';
+        el.setAttribute('role', 'button');
+        el.addEventListener('click', function (e) {
+          e.stopPropagation();
+          showAchievementDetail(id);
+        });
+        row.appendChild(el);
+      });
     });
+  }
+
+  function showAchievementDetail(id) {
+    var def = ACHIEVEMENTS[id];
+    if (!def) return;
+    var unlocked = !!unlockedAchievements[id];
+    achDetailIconEl.textContent = unlocked ? def.icon : '🔒';
+    achDetailNameEl.textContent = unlocked ? def.name : '???';
+    achDetailDescEl.textContent = def.desc;
+    achDetailStatusEl.textContent = unlocked ? '✓ UNLOCKED' : 'LOCKED';
+    achDetailCardEl.classList.toggle('locked', !unlocked);
+    achDetailEl.classList.remove('hidden');
+    playTone({ freq: 620, duration: 0.07, type: 'sine', vol: 0.05, slideTo: 820 });
+  }
+  function hideAchievementDetail() {
+    achDetailEl.classList.add('hidden');
   }
   var achToastTimeout = null;
   function showAchievementToast(def) {
@@ -1176,7 +1431,10 @@
   });
 
   // ---------- Game state ----------
-  var state = 'start'; // 'start' | 'playing' | 'gameover'
+  var state = 'start'; // 'start' | 'playing' | 'paused' | 'gameover'
+  var victoryFlight = false;
+  var victoryFlightTimer = 0;
+  var victoryMenuShown = false;
   var score = 0;
   var lives = 3;
   var frame = 0;
@@ -1320,11 +1578,57 @@
     initStars();
     initDust();
     initBgClouds();
+    resetJoystick();
     if (state !== 'playing') idlePlayerPos();
   }
 
   // ---------- Input ----------
   var pointerActive = false;
+  var JOY_RADIUS = 54;
+  var JOY_KNOB_R = 24;
+  var JOY_SPEED = 460;
+  var joy = { active: false, baseX: 0, baseY: 0, knobX: 0, knobY: 0, dx: 0, dy: 0, pointerId: null };
+
+  function joystickEnabled() { return settings.joystick; }
+
+  function joyHomePos() {
+    return { x: 78, y: height - 110 };
+  }
+
+  function resetJoystick() {
+    var home = joyHomePos();
+    joy.active = false;
+    joy.baseX = home.x; joy.baseY = home.y;
+    joy.knobX = home.x; joy.knobY = home.y;
+    joy.dx = 0; joy.dy = 0;
+    joy.pointerId = null;
+  }
+
+  function joyStart(x, y) {
+    joy.active = true;
+    joy.baseX = x; joy.baseY = y;
+    joy.knobX = x; joy.knobY = y;
+    joy.dx = 0; joy.dy = 0;
+  }
+
+  function joyMove(x, y) {
+    if (!joy.active) return;
+    var dx = x - joy.baseX, dy = y - joy.baseY;
+    var d = Math.hypot(dx, dy);
+    if (d > JOY_RADIUS) {
+      dx = dx / d * JOY_RADIUS;
+      dy = dy / d * JOY_RADIUS;
+      d = JOY_RADIUS;
+    }
+    joy.knobX = joy.baseX + dx;
+    joy.knobY = joy.baseY + dy;
+    joy.dx = dx / JOY_RADIUS;
+    joy.dy = dy / JOY_RADIUS;
+  }
+
+  function joyEnd() {
+    resetJoystick();
+  }
 
   function getRelPos(clientX, clientY) {
     var rect = canvas.getBoundingClientRect();
@@ -1335,38 +1639,49 @@
     player.targetY = y;
   }
 
+  function inputStart(x, y) {
+    if (joystickEnabled()) { joyStart(x, y); return; }
+    pointerActive = true;
+    setPointer(x, y);
+  }
+  function inputMove(x, y) {
+    if (joystickEnabled()) { joyMove(x, y); return; }
+    if (!pointerActive) return;
+    setPointer(x, y);
+  }
+  function inputEnd() {
+    if (joystickEnabled()) { joyEnd(); return; }
+    pointerActive = false;
+  }
+
   canvas.addEventListener('touchstart', function (e) {
     e.preventDefault();
-    pointerActive = true;
     var t = e.touches[0];
     var p = getRelPos(t.clientX, t.clientY);
-    setPointer(p.x, p.y);
+    inputStart(p.x, p.y);
   }, { passive: false });
 
   canvas.addEventListener('touchmove', function (e) {
     e.preventDefault();
-    if (!pointerActive) return;
     var t = e.touches[0];
     var p = getRelPos(t.clientX, t.clientY);
-    setPointer(p.x, p.y);
+    inputMove(p.x, p.y);
   }, { passive: false });
 
   canvas.addEventListener('touchend', function (e) {
     e.preventDefault();
-    pointerActive = false;
+    inputEnd();
   }, { passive: false });
 
   canvas.addEventListener('mousedown', function (e) {
-    pointerActive = true;
     var p = getRelPos(e.clientX, e.clientY);
-    setPointer(p.x, p.y);
+    inputStart(p.x, p.y);
   });
   window.addEventListener('mousemove', function (e) {
-    if (!pointerActive) return;
     var p = getRelPos(e.clientX, e.clientY);
-    setPointer(p.x, p.y);
+    inputMove(p.x, p.y);
   });
-  window.addEventListener('mouseup', function () { pointerActive = false; });
+  window.addEventListener('mouseup', function () { inputEnd(); });
 
   canvas.addEventListener('contextmenu', function (e) { e.preventDefault(); });
   document.addEventListener('gesturestart', function (e) { e.preventDefault(); });
@@ -2591,9 +2906,49 @@
     if (elapsed - superbossActiveStartTime < 45) checkAchievement('speed_demon');
     if (!superbossTookDamage) checkAchievement('flawless_titan');
     updateHUD();
-    setTimeout(function () {
-      if (state === 'playing') endGame('VOID TITAN VANQUISHED');
-    }, 2800);
+    startVictoryFlight();
+  }
+
+  // ---------- Victory outro: keep flying, drift to centre, then reveal menu ----------
+  function startVictoryFlight() {
+    victoryFlight = true;
+    victoryFlightTimer = 0;
+    victoryMenuShown = false;
+    bullets = [];
+    enemyBullets = [];
+    bombs = [];
+    pauseBtn.classList.add('hidden');
+    bombBtn.classList.add('hidden');
+  }
+
+  function updateVictoryFlight(dt) {
+    victoryFlightTimer += dt;
+    if (!victoryMenuShown && victoryFlightTimer >= 3.2) {
+      victoryMenuShown = true;
+      showVictoryMenu();
+    }
+  }
+
+  function showVictoryMenu() {
+    // Cut the cinematic line instantly — it sits above the overlay and would
+    // otherwise fade out on top of the menu.
+    cinematicTextEl.classList.remove('show');
+    cinematicTextEl.textContent = '';
+    victoryScoreEl.textContent = score;
+    var rows = [];
+    rows.push('<div class="stat-row">TIME SURVIVED ' + formatTime(elapsed) + '</div>');
+    if (bossesDefeated > 0) {
+      rows.push('<div class="stat-row">' + bossesDefeated + (bossesDefeated > 1 ? ' MINI-BOSSES DEFEATED' : ' MINI-BOSS DEFEATED') + '</div>');
+    }
+    rows.push('<div class="stat-row victory">✦ VOID TITAN SLAIN IN ' + formatTime(superbossDefeatTime - superbossActiveStartTime) + '</div>');
+    victoryStatEl.innerHTML = rows.join('');
+    renderAchievementRow();
+    hud.classList.add('hidden');
+    threatBarEl.classList.remove('show');
+    heatBarEl.classList.remove('show');
+    victoryScreen.classList.remove('hidden');
+    playTone({ freq: 440, duration: 0.5, type: 'triangle', vol: 0.14, slideTo: 660 });
+    setTimeout(function () { playTone({ freq: 660, duration: 0.8, type: 'triangle', vol: 0.14, slideTo: 880 }); }, 220);
   }
 
   // ---------- Victory fanfare ----------
@@ -2625,9 +2980,9 @@
   function scheduleSuperbossMusic(gen, stepIndex) {
     if (!superbossMusicActive || gen !== superbossMusicGen || state !== 'playing') return;
     var note = SUPERBOSS_BASSLINE[stepIndex % SUPERBOSS_BASSLINE.length];
-    playTone({ freq: note, duration: 0.28, type: 'sawtooth', vol: 0.09, slideTo: note * 0.98 });
-    if (stepIndex % 2 === 0) playNoise(0.06, 0.05);
-    if (stepIndex % 4 === 0) playTone({ freq: note * 2, duration: 0.5, type: 'triangle', vol: 0.06 });
+    playTone({ freq: note, duration: 0.28, type: 'sawtooth', vol: 0.09, slideTo: note * 0.98, music: true });
+    if (stepIndex % 2 === 0) playNoise(0.06, 0.05, true);
+    if (stepIndex % 4 === 0) playTone({ freq: note * 2, duration: 0.5, type: 'triangle', vol: 0.06, music: true });
     setTimeout(function () { scheduleSuperbossMusic(gen, stepIndex + 1); }, 260);
   }
 
@@ -2673,7 +3028,7 @@
     GAMEPLAY_MELODY.forEach(function (n) {
       var id = setTimeout(function () {
         if (gen !== gameplayMusicGen || !gameplayMusicShouldPlay()) return;
-        playTone({ freq: n.f, duration: n.d, type: 'triangle', vol: 0.07, slideTo: n.f * 1.004 });
+        playTone({ freq: n.f, duration: n.d, type: 'triangle', vol: 0.07, slideTo: n.f * 1.004, music: true });
       }, n.t * 1000);
       gameplayMusicTimeouts.push(id);
     });
@@ -2684,8 +3039,8 @@
         var id = setTimeout(function () {
           if (gen !== gameplayMusicGen || !gameplayMusicShouldPlay()) return;
           var f = (i % 4 === 2) ? 164.81 : 110.00;
-          playTone({ freq: f, duration: beatDur * 0.8, type: 'sawtooth', vol: 0.045 });
-          if (i % 2 === 0) playNoise(0.03, 0.018);
+          playTone({ freq: f, duration: beatDur * 0.8, type: 'sawtooth', vol: 0.045, music: true });
+          if (i % 2 === 0) playNoise(0.03, 0.018, true);
         }, i * beatDur * 1000);
         gameplayMusicTimeouts.push(id);
       })(i);
@@ -2835,6 +3190,8 @@
     bossPhaseDotsEl.classList.add('hidden');
     heatBarEl.classList.remove('show');
     bombBtn.classList.add('hidden');
+    pauseBtn.classList.add('hidden');
+    renderAchievementRow();
     stopSuperbossMusic();
     stopGameplayMusic();
     letterboxTopEl.classList.remove('show');
@@ -2891,14 +3248,22 @@
     threatBarEl.classList.remove('show');
     threatBarEl.classList.remove('critical');
     shakeTime = 0; shakeMag = 0;
+    victoryFlight = false;
+    victoryFlightTimer = 0;
+    victoryMenuShown = false;
+    resetJoystick();
     clearBuffUI();
     updateBombUI();
     resetPlayer();
     updateHUD();
     startScreen.classList.add('hidden');
     gameOverScreen.classList.add('hidden');
+    pauseScreen.classList.add('hidden');
+    victoryScreen.classList.add('hidden');
+    achDetailEl.classList.add('hidden');
     hud.classList.remove('hidden');
     bombBtn.classList.remove('hidden');
+    pauseBtn.classList.remove('hidden');
     state = 'playing';
     lastTime = performance.now();
     requestAnimationFrame(loop);
@@ -2912,6 +3277,125 @@
     muteBtn.textContent = muted ? '🔇' : '🔊';
   });
 
+  // ---------- Pause ----------
+  function pauseGame() {
+    if (state !== 'playing' || victoryFlight) return;
+    state = 'paused';
+    syncSettingsUI();
+    renderAchievementRow();
+    pauseScreen.classList.remove('hidden');
+    pauseBtn.classList.add('hidden');
+    playTone({ freq: 420, duration: 0.1, type: 'sine', vol: 0.06, slideTo: 300 });
+  }
+
+  function resumeGame() {
+    if (state !== 'paused') return;
+    pauseScreen.classList.add('hidden');
+    pauseBtn.classList.remove('hidden');
+    state = 'playing';
+    lastTime = performance.now();
+    resetJoystick();
+    playTone({ freq: 300, duration: 0.1, type: 'sine', vol: 0.06, slideTo: 480 });
+    requestAnimationFrame(loop);
+  }
+
+  function quitToMenu() {
+    state = 'start';
+    pauseScreen.classList.add('hidden');
+    victoryScreen.classList.add('hidden');
+    pauseBtn.classList.add('hidden');
+    bombBtn.classList.add('hidden');
+    hud.classList.add('hidden');
+    bossBarEl.classList.add('hidden');
+    bossBarEl.classList.remove('superboss');
+    bossPhaseDotsEl.classList.add('hidden');
+    heatBarEl.classList.remove('show');
+    threatBarEl.classList.remove('show');
+    threatBarEl.classList.remove('critical');
+    letterboxTopEl.classList.remove('show');
+    letterboxBottomEl.classList.remove('show');
+    cinematicTextEl.classList.remove('show');
+    bannerEl.classList.remove('show');
+    stopSuperbossMusic();
+    stopGameplayMusic();
+    victoryFlight = false;
+    victoryMenuShown = false;
+    superbossState = 'idle';
+    superboss = null;
+    superbossSequenceActive = false;
+    bossActive = null;
+    renderAchievementRow();
+    startScreen.classList.remove('hidden');
+    idlePlayerPos();
+    lastIdleTime = 0;
+    requestAnimationFrame(idleLoop);
+  }
+
+  pauseBtn.addEventListener('click', function (e) { e.stopPropagation(); pauseGame(); });
+  resumeBtn.addEventListener('click', resumeGame);
+  quitBtn.addEventListener('click', quitToMenu);
+
+  // ---------- Settings UI ----------
+  function syncSettingsUI() {
+    sfxSlider.value = Math.round(settings.sfxVolume * 100);
+    musicSlider.value = Math.round(settings.musicVolume * 100);
+    sfxValEl.textContent = sfxSlider.value;
+    musicValEl.textContent = musicSlider.value;
+    joystickToggleBtn.classList.toggle('active', settings.joystick);
+    joystickToggleBtn.textContent = 'VIRTUAL JOYSTICK: ' + (settings.joystick ? 'ON' : 'OFF');
+  }
+
+  sfxSlider.addEventListener('input', function () {
+    settings.sfxVolume = sfxSlider.value / 100;
+    sfxValEl.textContent = sfxSlider.value;
+    saveSettings();
+  });
+  sfxSlider.addEventListener('change', function () {
+    playTone({ freq: 700, duration: 0.09, type: 'sine', vol: 0.1 });
+  });
+  musicSlider.addEventListener('input', function () {
+    settings.musicVolume = musicSlider.value / 100;
+    musicValEl.textContent = musicSlider.value;
+    saveSettings();
+  });
+  musicSlider.addEventListener('change', function () {
+    playTone({ freq: 520, duration: 0.14, type: 'triangle', vol: 0.1, music: true });
+  });
+  joystickToggleBtn.addEventListener('click', function () {
+    settings.joystick = !settings.joystick;
+    saveSettings();
+    syncSettingsUI();
+    resetJoystick();
+    if (!settings.joystick) {
+      player.targetX = player.x;
+      player.targetY = player.y;
+    }
+    playTone({ freq: 600, duration: 0.08, type: 'square', vol: 0.06, slideTo: 800 });
+  });
+
+  achDetailCloseBtn.addEventListener('click', hideAchievementDetail);
+  achDetailEl.addEventListener('click', function (e) {
+    if (e.target === achDetailEl) hideAchievementDetail();
+  });
+
+  // ---------- Victory menu actions ----------
+  replayLevelBtn.addEventListener('click', function () {
+    victoryScreen.classList.add('hidden');
+    startGame();
+  });
+  nextLevelBtn.addEventListener('click', function () {
+    showBanner('LEVEL 2 COMING SOON', '#4ff0ff');
+    playTone({ freq: 300, duration: 0.12, type: 'square', vol: 0.05, slideTo: 200 });
+  });
+
+  window.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' || e.key === 'p' || e.key === 'P') {
+      if (!achDetailEl.classList.contains('hidden')) { hideAchievementDetail(); return; }
+      if (state === 'playing') pauseGame();
+      else if (state === 'paused') resumeGame();
+    }
+  });
+
   // ---------- Update ----------
   function update(dt) {
     elapsed += dt;
@@ -2920,14 +3404,32 @@
     if (shakeTime > 0) shakeTime = Math.max(0, shakeTime - dt);
     if (sunburstTimer > 0) sunburstTimer = Math.max(0, sunburstTimer - dt);
 
+    if (victoryFlight) updateVictoryFlight(dt);
+
     checkZoneUnlocks();
     updateThreatUI();
 
     var lerpFactor = Math.min(1, dt * 12);
     if (nebulaFactorAt(player.x, player.y) < 1) lerpFactor *= 0.5;
-    player.x += (player.targetX - player.x) * lerpFactor;
-    player.y += (player.targetY - player.y) * lerpFactor;
-    var pg = gravityForceAt(player.x, player.y);
+    if (victoryFlight) {
+      // Smoothly ease the ship to screen centre for the outro shot.
+      var centerX = width / 2, centerY = height * 0.5;
+      var ease = Math.min(1, dt * 1.8);
+      player.x += (centerX - player.x) * ease;
+      player.y += (centerY - player.y) * ease;
+      player.targetX = player.x;
+      player.targetY = player.y;
+    } else if (joystickEnabled()) {
+      var nbSlow = nebulaFactorAt(player.x, player.y) < 1 ? 0.5 : 1;
+      player.x += joy.dx * JOY_SPEED * nbSlow * dt;
+      player.y += joy.dy * JOY_SPEED * nbSlow * dt;
+      player.targetX = player.x;
+      player.targetY = player.y;
+    } else {
+      player.x += (player.targetX - player.x) * lerpFactor;
+      player.y += (player.targetY - player.y) * lerpFactor;
+    }
+    var pg = victoryFlight ? { fx: 0, fy: 0 } : gravityForceAt(player.x, player.y);
     player.x += pg.fx * dt;
     player.y += pg.fy * dt;
     player.x = Math.max(player.radius, Math.min(width - player.radius, player.x));
@@ -2989,7 +3491,7 @@
 
     var effectiveFireInterval = activeBuffs.rapid ? fireInterval * 0.45 : fireInterval;
     fireTimer -= dt;
-    if (fireTimer <= 0) {
+    if (fireTimer <= 0 && !victoryFlight) {
       fireTimer = effectiveFireInterval;
       bullets.push({ x: player.x - 10, y: player.y - 12, vx: 0, vy: -520 });
       bullets.push({ x: player.x + 10, y: player.y - 12, vx: 0, vy: -520 });
@@ -3008,7 +3510,7 @@
       var desiredY = a.leaving ? -80 : player.y + 16;
       a.x += (desiredX - a.x) * Math.min(1, dt * 4);
       a.y += (desiredY - a.y) * Math.min(1, dt * 4);
-      if (!a.leaving) {
+      if (!a.leaving && !victoryFlight) {
         a.fireTimer -= dt;
         if (a.fireTimer <= 0) {
           a.fireTimer = fireInterval;
@@ -3025,7 +3527,7 @@
     });
     allies = allies.filter(function (a) { return !(a.leaving && a.y < -70); });
 
-    var superbossHoldsField = superbossState !== 'idle';
+    var superbossHoldsField = superbossState !== 'idle' || victoryFlight;
 
     rockTimer -= dt;
     if (rockTimer <= 0 && !superbossHoldsField) {
@@ -4210,12 +4712,45 @@
     drawShip(player.x, player.y, blink);
 
     ctx.restore();
+
+    if (joystickEnabled() && state === 'playing' && !victoryFlight) drawJoystick();
+  }
+
+  function drawJoystick() {
+    var home = joyHomePos();
+    var bx = joy.active ? joy.baseX : home.x;
+    var by = joy.active ? joy.baseY : home.y;
+    var kx = joy.active ? joy.knobX : home.x;
+    var ky = joy.active ? joy.knobY : home.y;
+    ctx.save();
+    ctx.globalAlpha = joy.active ? 0.75 : 0.35;
+    ctx.strokeStyle = '#4ff0ff';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(bx, by, JOY_RADIUS, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.fillStyle = 'rgba(13,17,48,0.45)';
+    ctx.fill();
+    ctx.globalAlpha = joy.active ? 0.95 : 0.5;
+    ctx.fillStyle = '#4ff0ff';
+    ctx.shadowColor = '#4ff0ff';
+    ctx.shadowBlur = joy.active ? 14 : 6;
+    ctx.beginPath();
+    ctx.arc(kx, ky, JOY_KNOB_R, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
   }
 
   function loop(now) {
-    if (state !== 'playing') return;
+    if (state !== 'playing' && state !== 'paused') return;
     var dt = Math.min(0.033, (now - lastTime) / 1000);
     lastTime = now;
+    if (state === 'paused') {
+      // Keep the frame on screen but freeze simulation.
+      render();
+      requestAnimationFrame(loop);
+      return;
+    }
     if (hitstopTimer > 0) {
       hitstopTimer -= dt;
       render();
@@ -4242,6 +4777,8 @@
   }
 
   // ---------- Init ----------
+  loadSettings();
+  syncSettingsUI();
   loadAchievements();
   renderAchievementRow();
   window.addEventListener('resize', handleResize);
