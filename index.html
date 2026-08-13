@@ -5981,7 +5981,7 @@
   // occluders' umbra wedges are punched out of that light's gradient *before*
   // it is added to the buffer, which keeps each shadow tied to the light that
   // threw it instead of darkening the whole scene.
-  var LIGHT_RES = 0.4;
+  var LIGHT_RES = 0.55;
   var lightCanvas = document.createElement('canvas');
   var lightCtx = lightCanvas.getContext('2d');
   var lightScratch = document.createElement('canvas');
@@ -5998,10 +5998,10 @@
   var lightFrameMs = 16.7;
   function tuneLightQuality(frameMs) {
     lightFrameMs += (Math.min(60, frameMs) - lightFrameMs) * 0.06;
-    if (lightFrameMs > 26 && LIGHT_RES > 0.3) {
-      LIGHT_RES = 0.3; MAX_SHADOW_LIGHTS = 8; MAX_CASTERS_PER_LIGHT = 6;
-    } else if (lightFrameMs < 17 && LIGHT_RES < 0.4) {
-      LIGHT_RES = 0.4; MAX_SHADOW_LIGHTS = 16; MAX_CASTERS_PER_LIGHT = 10;
+    if (lightFrameMs > 26 && LIGHT_RES > 0.35) {
+      LIGHT_RES = 0.35; MAX_SHADOW_LIGHTS = 8; MAX_CASTERS_PER_LIGHT = 6;
+    } else if (lightFrameMs < 17 && LIGHT_RES < 0.55) {
+      LIGHT_RES = 0.55; MAX_SHADOW_LIGHTS = 16; MAX_CASTERS_PER_LIGHT = 10;
     }
   }
 
@@ -6077,8 +6077,8 @@
   function buildLightBuffer() {
     syncLightBuffers();
     // Ambient floor: lerps from "no darkening at all" to near-black as the dark falls.
-    var amb = Math.round(255 - 252 * darkAmbient);
-    var ambB = Math.round(255 - 249 * darkAmbient);
+    var amb = Math.round(255 - 226 * darkAmbient);
+    var ambB = Math.round(255 - 210 * darkAmbient);
     lightCtx.setTransform(1, 0, 0, 1, 0, 0);
     lightCtx.globalCompositeOperation = 'source-over';
     lightCtx.fillStyle = 'rgb(' + amb + ',' + amb + ',' + ambB + ')';
@@ -6166,13 +6166,86 @@
   function drawDarkStarfield() {
     ctx.save();
     ctx.globalCompositeOperation = 'lighter';
-    for (var i = 0; i < stars.length; i += 3) {
+    for (var i = 0; i < stars.length; i += 2) {
       var s = stars[i];
       var tw = 0.7 + 0.3 * Math.sin(elapsed * s.twinkleSpeed + s.twinklePhase);
-      ctx.globalAlpha = (0.1 + s.r / 14) * tw * darkAmbient;
+      ctx.globalAlpha = (0.16 + s.r / 9) * tw * darkAmbient;
       ctx.fillStyle = s.tint;
       ctx.beginPath();
       ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  // Drawn on top of the darkness so they stay sharp and self-luminous: the tells
+  // that mark out hazards you would otherwise never see coming, and tracer fire
+  // (whose soft light pool alone read as a blur).
+  function drawDarkEmissives() {
+    var i, hz;
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+
+    for (i = 0; i < hazards.length; i++) {
+      hz = hazards[i];
+      if (hz.telegraph > 0) continue;
+      if (hz.type === 'blackhole') {
+        // A black hole bends light from behind it around its shadow into a thin
+        // photon ring — the one part of it that is never dark.
+        var er = hz.eventHorizon || hz.r;
+        ctx.globalAlpha = darkAmbient;
+        var ring = ctx.createRadialGradient(hz.x, hz.y, er * 1.04, hz.x, hz.y, er * 1.55);
+        ring.addColorStop(0, 'rgba(154,61,255,0)');
+        ring.addColorStop(0.4, 'rgba(206,164,255,0.9)');
+        ring.addColorStop(1, 'rgba(154,61,255,0)');
+        ctx.fillStyle = ring;
+        ctx.beginPath();
+        ctx.arc(hz.x, hz.y, er * 1.55, 0, Math.PI * 2);
+        ctx.fill();
+        // Brighter where the accretion disk is swinging toward us.
+        var spin = elapsed * 0.7;
+        ctx.strokeStyle = 'rgba(236,214,255,0.95)';
+        ctx.lineWidth = 2.4;
+        ctx.beginPath();
+        ctx.arc(hz.x, hz.y, er * 1.22, spin, spin + Math.PI * 0.75);
+        ctx.stroke();
+      } else if (hz.type === 'planet') {
+        // Aurorae burning over both poles, so an unlit planet still announces
+        // itself. They hug the limb and bleed off the edge rather than floating
+        // as rings across the planet's face.
+        var pulse = 0.55 + 0.45 * Math.sin(elapsed * 1.5 + hz.x * 0.01);
+        ctx.globalAlpha = darkAmbient * pulse;
+        var poles = [
+          { y: hz.y - hz.r * 0.9, col: '122,255,192', a0: Math.PI * 1.14, a1: Math.PI * 1.86 },
+          { y: hz.y + hz.r * 0.9, col: '150,204,255', a0: Math.PI * 0.14, a1: Math.PI * 0.86 }
+        ];
+        for (var p = 0; p < poles.length; p++) {
+          var po = poles[p];
+          var cap = ctx.createRadialGradient(hz.x, po.y, 0, hz.x, po.y, hz.r * 0.6);
+          cap.addColorStop(0, 'rgba(' + po.col + ',0.5)');
+          cap.addColorStop(1, 'rgba(' + po.col + ',0)');
+          ctx.fillStyle = cap;
+          ctx.beginPath();
+          ctx.arc(hz.x, po.y, hz.r * 0.6, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.strokeStyle = 'rgba(' + po.col + ',0.95)';
+          ctx.lineWidth = Math.max(1.8, hz.r * 0.05);
+          ctx.beginPath();
+          ctx.arc(hz.x, hz.y, hz.r * 0.97, po.a0, po.a1);
+          ctx.stroke();
+        }
+      }
+    }
+
+    ctx.globalAlpha = darkAmbient;
+    ctx.fillStyle = '#9ef7ff';
+    for (i = 0; i < bullets.length; i++) {
+      ctx.fillRect(bullets[i].x - 1.5, bullets[i].y - 7, 3, 12);
+    }
+    for (i = 0; i < enemyBullets.length; i++) {
+      ctx.fillStyle = enemyBullets[i].color || '#ff7a9c';
+      ctx.beginPath();
+      ctx.arc(enemyBullets[i].x, enemyBullets[i].y, (enemyBullets[i].r || 4) * 0.85, 0, Math.PI * 2);
       ctx.fill();
     }
     ctx.restore();
@@ -6301,22 +6374,16 @@
     ctx.save();
     ctx.translate(shakeX, shakeY);
 
-    var voidLit = darkAmbient < 0.35;
+    bgClouds.forEach(drawBgCloud);
 
-    if (voidLit) {
-      bgClouds.forEach(drawBgCloud);
+    ctx.fillStyle = '#cfe0ff';
+    dust.forEach(function (d) {
+      ctx.globalAlpha = d.alpha;
+      ctx.fillRect(d.x, d.y, d.r, d.r);
+    });
+    ctx.globalAlpha = 1;
 
-      ctx.fillStyle = '#cfe0ff';
-      dust.forEach(function (d) {
-        ctx.globalAlpha = d.alpha;
-        ctx.fillRect(d.x, d.y, d.r, d.r);
-      });
-      ctx.globalAlpha = 1;
-    }
-
-    // In the dark the starfield is re-drawn additively after the lighting pass —
-    // stars are light sources in their own right, so the darkness must not eat them.
-    if (voidLit) {
+    {
       stars.forEach(function (s) {
         var tw = 0.7 + 0.3 * Math.sin(elapsed * s.twinkleSpeed + s.twinklePhase);
         ctx.globalAlpha = (0.5 + s.r / 3) * tw;
@@ -6341,7 +6408,7 @@
     else if (level3State === 'arrive') warpAlpha = Math.max(0, 1 - level3SeqTimer / 0.6);
     if (warpAlpha > 0) drawWarpStreaks(warpAlpha);
 
-    if (voidLit) nebulae.forEach(drawNebula);
+    nebulae.forEach(drawNebula);
 
     hazards.forEach(function (hz) {
       if (hz.type === 'blackhole') drawBlackHole(hz);
@@ -6446,6 +6513,7 @@
       buildLightBuffer();
       compositeLighting();
       if (darkAmbient > 0.15) drawDarkStarfield();
+      drawDarkEmissives();
       drawLampHousing();
     }
 
