@@ -1682,10 +1682,10 @@
   var LEVEL2_BOSS_HYPERSPEED_TIME = 2.4;
   var LEVEL2_BOSS_ARRIVE_TIME = 1.8;
   var LEVEL2_BOSS_BATTLE_DURATION = 80;
-  var BATTLE_ENEMY_INTERVAL = 0.6;
-  var BATTLE_ALLY_INTERVAL = 4;
-  var BATTLE_MAX_ENEMIES = 22;
-  var BATTLE_MAX_ALLIES = 7;
+  var BATTLE_ENEMY_INTERVAL = 0.55;
+  var BATTLE_ALLY_INTERVAL = 3;
+  var BATTLE_MAX_ENEMIES = 24;
+  var BATTLE_MAX_ALLIES = 9;
   var score = 0;
   var lives = 3;
   var frame = 0;
@@ -2912,6 +2912,12 @@
       threatFillEl.style.height = (pct * 100) + '%';
       threatShipEl.style.bottom = (pct * 100) + '%';
       threatBarEl.classList.toggle('critical', pct > 0.85);
+    } else if (level2BossState === 'idle' && currentLevel === 2 && level2StartElapsed !== null && !levelIntroActive && !victoryFlight) {
+      var pct2 = Math.min(1, (elapsed - level2StartElapsed) / LEVEL2_BOSS_TRIGGER_TIME);
+      threatBarEl.classList.add('show');
+      threatFillEl.style.height = (pct2 * 100) + '%';
+      threatShipEl.style.bottom = (pct2 * 100) + '%';
+      threatBarEl.classList.toggle('critical', pct2 > 0.85);
     } else {
       threatBarEl.classList.remove('show');
       threatBarEl.classList.remove('critical');
@@ -3444,6 +3450,7 @@
     letterboxBottomEl.classList.add('show');
     showCinematicLine('ENEMY ARMADA INBOUND', '#ff3d6b', true);
     triggerShake(0.6, 9);
+    triggerHitstop(0.12);
     playTone({ freq: 70, duration: 1.0, type: 'sawtooth', vol: 0.22, slideTo: 30 });
     playNoise(0.8, 0.15);
     if (navigator.vibrate) navigator.vibrate([60, 40, 60, 40, 160]);
@@ -3473,7 +3480,24 @@
     bossBarEl.classList.add('superboss');
     startGameplayMusic();
     playTone({ freq: 220, duration: 0.4, type: 'square', vol: 0.16, slideTo: 700 });
-    triggerShake(0.3, 4);
+    triggerShake(0.4, 6);
+  }
+
+  function pickBattleEnemyKind() {
+    var r = Math.random();
+    if (r < 0.62) return 'interceptor';
+    if (r < 0.78) return 'strafer';
+    if (r < 0.90) return 'gunship';
+    if (r < 0.97) return 'charger';
+    return 'sentinel';
+  }
+
+  function spawnBattleEnemy() {
+    var kind = pickBattleEnemyKind();
+    var en = makeEnemy(kind, rand(30, Math.max(31, width - 30)), -30);
+    en.vy *= 0.72;
+    en.fireTimer *= 1.35;
+    enemies.push(en);
   }
 
   function spawnBattleAlly() {
@@ -3483,7 +3507,8 @@
       y: height + 30,
       hp: 3, maxHp: 3,
       fireTimer: rand(0, 0.5),
-      phase: rand(0, Math.PI * 2)
+      phase: rand(0, Math.PI * 2),
+      aimOffsetX: rand(-70, 70)
     });
     playTone({ freq: 500, duration: 0.1, type: 'sine', vol: 0.06, slideTo: 850 });
   }
@@ -3499,11 +3524,15 @@
 
   function updateLevel2BossBattle(dt) {
     level2BossBattleTimer += dt;
+    level2BossSeqTimer += dt;
+    if (level2BossSeqTimer >= 1.3 && cinematicTextEl.classList.contains('show')) {
+      cinematicTextEl.classList.remove('show');
+    }
     if (!level2BossSpawnsStopped) {
       battleEnemyTimer -= dt;
       if (battleEnemyTimer <= 0 && enemies.length < BATTLE_MAX_ENEMIES) {
         battleEnemyTimer = rand(BATTLE_ENEMY_INTERVAL * 0.7, BATTLE_ENEMY_INTERVAL * 1.3);
-        spawnEnemy();
+        spawnBattleEnemy();
       }
       battleAllyTimer -= dt;
       var battleAllyCount = allies.filter(function (a) { return a.battleAlly; }).length;
@@ -4410,9 +4439,10 @@
     }
     syncBuffUI();
 
+    var level2Cinematic = level2BossState === 'chargeup' || level2BossState === 'hyperspeed' || level2BossState === 'arrive';
     var effectiveFireInterval = activeBuffs.rapid ? fireInterval * 0.45 : fireInterval;
     fireTimer -= dt;
-    if (fireTimer <= 0 && !victoryFlight) {
+    if (fireTimer <= 0 && !victoryFlight && !level2Cinematic) {
       fireTimer = effectiveFireInterval;
       bullets.push({ x: player.x - 10, y: player.y - 12, vx: 0, vy: -520 });
       bullets.push({ x: player.x + 10, y: player.y - 12, vx: 0, vy: -520 });
@@ -4431,34 +4461,52 @@
       if (a.battleAlly) {
         a.phase = (a.phase || 0) + dt * 1.6;
         var bTarget = findNearestThreat(a.x, a.y);
-        if (bTarget) {
+        var lowerBandTop = height * 0.42;
+        var lowerBandBottom = height * 0.92;
+        var moveSpeed = 150;
+        if (a.y < lowerBandTop) {
+          // Overextended toward the enemy line — turn around and fly back to formation.
+          a.x += Math.cos(a.phase) * 30 * dt;
+          a.y += moveSpeed * 1.4 * dt;
+        } else if (bTarget) {
           var bdx = bTarget.x - a.x, bdy = bTarget.y - a.y;
           var bd = Math.sqrt(bdx * bdx + bdy * bdy) || 1;
-          var holdDist = 150;
-          var moveSpeed = 130;
+          var holdDist = 130;
           if (bd > holdDist + 25) {
             a.x += (bdx / bd) * moveSpeed * dt;
-            a.y += (bdy / bd) * moveSpeed * dt;
+            a.y = Math.max(lowerBandTop, Math.min(lowerBandBottom, a.y + (bdy / bd) * moveSpeed * dt));
           } else if (bd < holdDist - 25) {
             a.x -= (bdx / bd) * moveSpeed * dt;
-            a.y -= (bdy / bd) * moveSpeed * dt;
+            a.y = Math.max(lowerBandTop, Math.min(lowerBandBottom, a.y - (bdy / bd) * moveSpeed * dt));
           } else {
             a.x += Math.cos(a.phase) * 46 * dt;
-            a.y += Math.sin(a.phase * 0.7) * 30 * dt;
-          }
-          a.fireTimer -= dt;
-          if (a.fireTimer <= 0) {
-            a.fireTimer = rand(0.35, 0.55);
-            var bang = Math.atan2(bdy, bdx);
-            bullets.push({ x: a.x, y: a.y, vx: Math.cos(bang) * 540, vy: Math.sin(bang) * 540, color: '#7dffb0' });
-            playTone({ freq: 900 + rand(-30, 30), duration: 0.04, type: 'square', vol: 0.02, slideTo: 600 });
+            a.y = Math.max(lowerBandTop, Math.min(lowerBandBottom, a.y + Math.sin(a.phase * 0.7) * 30 * dt));
           }
         } else {
           a.x += Math.cos(a.phase) * 20 * dt;
-          a.y += Math.sin(a.phase * 0.6) * 20 * dt;
+          a.y = Math.max(lowerBandTop, Math.min(lowerBandBottom, a.y + Math.sin(a.phase * 0.6) * 20 * dt));
         }
+        allies.forEach(function (other) {
+          if (other === a || !other.battleAlly) return;
+          var sdx = a.x - other.x, sdy = a.y - other.y;
+          var sd = Math.sqrt(sdx * sdx + sdy * sdy);
+          if (sd > 0 && sd < 44) {
+            a.x += (sdx / sd) * (44 - sd) * 2.2 * dt;
+            a.y += (sdy / sd) * (44 - sd) * 2.2 * dt;
+          }
+        });
         a.x = Math.max(24, Math.min(width - 24, a.x));
         a.y = Math.max(40, Math.min(height - 40, a.y));
+        if (bTarget) {
+          a.fireTimer -= dt;
+          if (a.fireTimer <= 0) {
+            a.fireTimer = rand(0.26, 0.4);
+            var aimX = bTarget.x + (a.aimOffsetX || 0) * 0.4;
+            var bang = Math.atan2(bTarget.y - a.y, aimX - a.x);
+            bullets.push({ x: a.x, y: a.y, vx: Math.cos(bang) * 540, vy: Math.sin(bang) * 540, color: '#7dffb0' });
+            playTone({ freq: 900 + rand(-30, 30), duration: 0.04, type: 'square', vol: 0.02, slideTo: 600 });
+          }
+        }
         return;
       }
       var desiredX = a.leaving ? a.x + a.side * 4 : player.x + a.side * 42;
