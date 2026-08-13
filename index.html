@@ -1730,6 +1730,7 @@
   var superboss = null;
   var superbossSeqTimer = 0;
   var superbossSequenceActive = false;
+  var editorInvincible = false;
   var superbossMusicActive = false;
   var superbossMusicGen = 0;
   var superbossMaxPhaseReached = 0;
@@ -2938,13 +2939,13 @@
   // ---------- Threat progress bar ----------
   function updateThreatUI() {
     if (superbossState === 'idle' && currentLevel === 1) {
-      var pct = Math.min(1, elapsed / SUPERBOSS_TIME);
+      var pct = Math.min(1, elapsed / TUNE.superbossTime);
       threatBarEl.classList.add('show');
       threatFillEl.style.height = (pct * 100) + '%';
       threatShipEl.style.bottom = (pct * 100) + '%';
       threatBarEl.classList.toggle('critical', pct > 0.85);
     } else if (level2BossState === 'idle' && currentLevel === 2 && level2StartElapsed !== null && !levelIntroActive && !victoryFlight) {
-      var pct2 = Math.min(1, (elapsed - level2StartElapsed) / LEVEL2_BOSS_TRIGGER_TIME);
+      var pct2 = Math.min(1, (elapsed - level2StartElapsed) / TUNE.l2TriggerTime);
       threatBarEl.classList.add('show');
       threatFillEl.style.height = (pct2 * 100) + '%';
       threatShipEl.style.bottom = (pct2 * 100) + '%';
@@ -3453,7 +3454,7 @@
   }
   function updateLevel2BossChargeup(dt) {
     level2BossSeqTimer += dt;
-    if (level2BossSeqTimer >= LEVEL2_BOSS_CHARGEUP_TIME) startLevel2BossHyperspeed();
+    if (level2BossSeqTimer >= TUNE.l2ChargeupTime) startLevel2BossHyperspeed();
   }
 
   function startLevel2BossHyperspeed() {
@@ -3471,7 +3472,7 @@
   function updateLevel2BossHyperspeed(dt) {
     level2BossSeqTimer += dt;
     updateWarpStreaks(dt, Math.min(1, level2BossSeqTimer / 0.4));
-    if (level2BossSeqTimer >= LEVEL2_BOSS_HYPERSPEED_TIME) startLevel2BossArrive();
+    if (level2BossSeqTimer >= TUNE.l2HyperspeedTime) startLevel2BossArrive();
   }
 
   function startLevel2BossArrive() {
@@ -3489,7 +3490,7 @@
   function updateLevel2BossArrive(dt) {
     level2BossSeqTimer += dt;
     updateWarpStreaks(dt, Math.max(0, 1 - level2BossSeqTimer / 0.5));
-    if (level2BossSeqTimer >= LEVEL2_BOSS_ARRIVE_TIME) startLevel2BossBattle();
+    if (level2BossSeqTimer >= TUNE.l2ArriveTime) startLevel2BossBattle();
   }
 
   function startLevel2BossBattle() {
@@ -3536,7 +3537,7 @@
       battleAlly: true,
       x: rand(width * 0.15, width * 0.85),
       y: height + 30,
-      hp: 3, maxHp: 3,
+      hp: TUNE.battleAllyHp, maxHp: TUNE.battleAllyHp,
       fireTimer: rand(0, 0.5),
       phase: rand(0, Math.PI * 2),
       aimOffsetX: rand(-70, 70)
@@ -3561,18 +3562,18 @@
     }
     if (!level2BossSpawnsStopped) {
       battleEnemyTimer -= dt;
-      if (battleEnemyTimer <= 0 && enemies.length < BATTLE_MAX_ENEMIES) {
-        battleEnemyTimer = rand(BATTLE_ENEMY_INTERVAL * 0.7, BATTLE_ENEMY_INTERVAL * 1.3);
+      if (battleEnemyTimer <= 0 && enemies.length < TUNE.l2MaxEnemies) {
+        battleEnemyTimer = rand(TUNE.l2EnemyInterval * 0.7, TUNE.l2EnemyInterval * 1.3);
         spawnBattleEnemy();
       }
       battleAllyTimer -= dt;
       var battleAllyCount = allies.filter(function (a) { return a.battleAlly; }).length;
-      if (battleAllyTimer <= 0 && battleAllyCount < BATTLE_MAX_ALLIES) {
-        battleAllyTimer = rand(BATTLE_ALLY_INTERVAL * 0.7, BATTLE_ALLY_INTERVAL * 1.3);
+      if (battleAllyTimer <= 0 && battleAllyCount < TUNE.l2MaxAllies) {
+        battleAllyTimer = rand(TUNE.l2AllyInterval * 0.7, TUNE.l2AllyInterval * 1.3);
         spawnBattleAlly();
       }
-      bossFillEl.style.width = Math.min(100, (level2BossBattleTimer / LEVEL2_BOSS_BATTLE_DURATION) * 100) + '%';
-      if (level2BossBattleTimer >= LEVEL2_BOSS_BATTLE_DURATION) {
+      bossFillEl.style.width = Math.min(100, (level2BossBattleTimer / TUNE.l2BattleDuration) * 100) + '%';
+      if (level2BossBattleTimer >= TUNE.l2BattleDuration) {
         level2BossSpawnsStopped = true;
         level2BossPeakEnemyCount = Math.max(1, enemies.length);
         showBanner('⚠ NO MORE REINFORCEMENTS — FINISH THEM', '#ff3d6b');
@@ -3588,7 +3589,7 @@
   }
 
   function finishLevel2Boss() {
-    var reward = Math.round(3200 * DIFF.scoreMult);
+    var reward = Math.round(TUNE.l2Reward * DIFF.scoreMult);
     var fx = player.x, fy = Math.max(60, player.y - 120);
     score += reward;
     spawnParticles(fx, fy, '#ff3d6b', 60);
@@ -3662,7 +3663,7 @@
     level3SeqTimer += dt;
     if (level3State === 'hyperspeed') {
       updateWarpStreaks(dt, Math.min(1, level3SeqTimer / 0.4));
-      if (level3SeqTimer >= LEVEL3_HYPERSPEED_TIME) {
+      if (level3SeqTimer >= TUNE.l3HyperspeedTime) {
         level3State = 'arrive';
         level3SeqTimer = 0;
         showCinematicLine('THE UNLIT REACH', '#8fa6ff', true);
@@ -3675,8 +3676,8 @@
     }
     updateWarpStreaks(dt, Math.max(0, 1 - level3SeqTimer / 0.6));
     // The lights go out fast, then settle into total black.
-    darkAmbient = Math.min(1, Math.pow(level3SeqTimer / LEVEL3_ARRIVE_TIME, 0.6));
-    if (level3SeqTimer >= LEVEL3_ARRIVE_TIME) startLevel3Transit();
+    darkAmbient = Math.min(1, Math.pow(level3SeqTimer / TUNE.l3ArriveTime, 0.6));
+    if (level3SeqTimer >= TUNE.l3ArriveTime) startLevel3Transit();
   }
 
   function startLevel3Transit() {
@@ -3709,7 +3710,7 @@
 
   function updateLevel3Transit(dt) {
     level3TransitTimer += dt;
-    var pct = Math.min(1, level3TransitTimer / LEVEL3_TRANSIT_DURATION);
+    var pct = Math.min(1, level3TransitTimer / TUNE.l3TransitDuration);
     bossFillEl.style.width = (pct * 100) + '%';
     bossBarEl.classList.toggle('critical', pct > 0.88);
     if (pct >= 1) startLevel3Sunrise();
@@ -3735,7 +3736,7 @@
 
   function updateLevel3Sunrise(dt) {
     level3SeqTimer += dt;
-    var t = Math.min(1, level3SeqTimer / LEVEL3_SUNRISE_TIME);
+    var t = Math.min(1, level3SeqTimer / TUNE.l3SunriseTime);
     var ease = t * t;
     // A star climbs into frame; its light grows until the darkness is gone.
     sunriseSun.x = width / 2;
@@ -3753,7 +3754,7 @@
   }
 
   function finishLevel3() {
-    var reward = Math.round(5000 * DIFF.scoreMult);
+    var reward = Math.round(TUNE.l3Reward * DIFF.scoreMult);
     score += reward;
     level3State = 'done';
     level3Cleared = true;
@@ -4249,7 +4250,7 @@
   }
 
   function loseLife() {
-    if (superbossSequenceActive) return;
+    if (superbossSequenceActive || editorInvincible) return;
     if (levelIntroActive) return;
     if (player.invincible > 0) return;
     if (superbossState === 'active') superbossTookDamage = true;
@@ -4305,7 +4306,7 @@
     if (level3Cleared) {
       rows.push('<div class="stat-row victory">☀ DARK ZONE CROSSED IN ' + formatTime(level3ClearTime - level3StartElapsed) + '</div>');
     } else if (level3State === 'transit') {
-      rows.push('<div class="stat-row fallen">DARK ZONE — ' + Math.floor(Math.min(1, level3TransitTimer / LEVEL3_TRANSIT_DURATION) * 100) + '% TRANSITED (LOST IN THE DARK)</div>');
+      rows.push('<div class="stat-row fallen">DARK ZONE — ' + Math.floor(Math.min(1, level3TransitTimer / TUNE.l3TransitDuration) * 100) + '% TRANSITED (LOST IN THE DARK)</div>');
     }
     bossStatEl.innerHTML = rows.join('');
 
@@ -4342,7 +4343,12 @@
     bombPickups = []; bombs = []; homingRockets = []; blastRings = []; bombCount = 0; debris = [];
     activeBuffs = {}; shieldCharges = 0;
     bossActive = null; bossesDefeated = 0; nextBossAt = 40;
-    rockInterval = 1.1 * DIFF.spawnMult; enemyInterval = 3.2 * DIFF.spawnMult;
+    rockInterval = TUNE.rockIntervalBase * DIFF.spawnMult;
+    enemyInterval = TUNE.enemyIntervalBase * DIFF.spawnMult;
+    hazardInterval = TUNE.hazardIntervalBase;
+    nebulaInterval = TUNE.nebulaIntervalBase;
+    fireInterval = TUNE.playerFireInterval;
+    player.radius = TUNE.playerRadius;
     rockTimer = 0; enemyTimer = 0; fireTimer = 0;
     hazardTimer = 12; nebulaTimer = 8;
     bossBarEl.classList.add('hidden');
@@ -4673,7 +4679,7 @@
         var bTarget = findNearestThreat(a.x, a.y);
         var lowerBandTop = height * 0.42;
         var lowerBandBottom = height * 0.92;
-        var moveSpeed = 150;
+        var moveSpeed = TUNE.battleAllySpeed;
         if (a.y < lowerBandTop) {
           // Overextended toward the enemy line — turn around and fly back to formation.
           a.x += Math.cos(a.phase) * 30 * dt;
@@ -4681,7 +4687,7 @@
         } else if (bTarget) {
           var bdx = bTarget.x - a.x, bdy = bTarget.y - a.y;
           var bd = Math.sqrt(bdx * bdx + bdy * bdy) || 1;
-          var holdDist = 130;
+          var holdDist = TUNE.battleAllyHoldDist;
           if (bd > holdDist + 25) {
             a.x += (bdx / bd) * moveSpeed * dt;
             a.y = Math.max(lowerBandTop, Math.min(lowerBandBottom, a.y + (bdy / bd) * moveSpeed * dt));
@@ -4700,9 +4706,9 @@
           if (other === a || !other.battleAlly) return;
           var sdx = a.x - other.x, sdy = a.y - other.y;
           var sd = Math.sqrt(sdx * sdx + sdy * sdy);
-          if (sd > 0 && sd < 44) {
-            a.x += (sdx / sd) * (44 - sd) * 2.2 * dt;
-            a.y += (sdy / sd) * (44 - sd) * 2.2 * dt;
+          if (sd > 0 && sd < TUNE.battleAllySeparation) {
+            a.x += (sdx / sd) * (TUNE.battleAllySeparation - sd) * 2.2 * dt;
+            a.y += (sdy / sd) * (TUNE.battleAllySeparation - sd) * 2.2 * dt;
           }
         });
         a.x = Math.max(24, Math.min(width - 24, a.x));
@@ -4710,7 +4716,7 @@
         if (bTarget) {
           a.fireTimer -= dt;
           if (a.fireTimer <= 0) {
-            a.fireTimer = rand(0.26, 0.4);
+            a.fireTimer = rand(TUNE.battleAllyFireMin, TUNE.battleAllyFireMax);
             var aimX = bTarget.x + (a.aimOffsetX || 0) * 0.4;
             var bang = Math.atan2(bTarget.y - a.y, aimX - a.x);
             bullets.push({ x: a.x, y: a.y, vx: Math.cos(bang) * 540, vy: Math.sin(bang) * 540, color: '#7dffb0' });
@@ -4767,7 +4773,7 @@
       else updateBoss(dt);
     }
 
-    if (superbossState === 'idle' && currentLevel === 1 && elapsed >= SUPERBOSS_TIME) {
+    if (superbossState === 'idle' && currentLevel === 1 && elapsed >= TUNE.superbossTime) {
       startSuperbossChargeup();
     } else if (superbossState === 'chargeup') {
       updateSuperbossChargeup(dt);
@@ -4780,7 +4786,7 @@
     }
 
     if (level2BossState === 'idle' && currentLevel === 2 && !levelIntroActive && !victoryFlight &&
-        level2StartElapsed !== null && (elapsed - level2StartElapsed) >= LEVEL2_BOSS_TRIGGER_TIME) {
+        level2StartElapsed !== null && (elapsed - level2StartElapsed) >= TUNE.l2TriggerTime) {
       startLevel2BossChargeup();
     } else if (level2BossState === 'chargeup') {
       updateLevel2BossChargeup(dt);
@@ -5981,7 +5987,44 @@
   // occluders' umbra wedges are punched out of that light's gradient *before*
   // it is added to the buffer, which keeps each shadow tied to the light that
   // threw it instead of darkening the whole scene.
-  var LIGHT_RES = 0.55;
+  // Every scalar the live editor can reach. Anything read through TUNE can be
+  // changed at runtime and takes effect on the next frame.
+  var TUNE = {
+    // darkness / lighting
+    darkColorR: 8, darkColorG: 13, darkColorB: 34,
+    lightRes: 0.55, maxShadowLights: 16, maxCastersPerLight: 10,
+    shadowSoftness: 0.055, penumbraStrength: 0.4, shadowReach: 2.4,
+    lampRadius: 88, lampIntensity: 0.78, lampWingDX: 13, lampWingDY: 12,
+    navLightRadius: 26, navLightIntensity: 0.5,
+    bulletLightRadius: 34, bulletLightIntensity: 0.14,
+    enemyBulletLightRadius: 34, enemyBulletLightIntensity: 0.2,
+    bombLightRadius: 66, bombLightIntensity: 0.4,
+    rocketLightRadius: 58, rocketLightIntensity: 0.4,
+    sunLightScale: 1.6, sunLightIntensity: 1,
+    mineLightRadius: 44, mineLightIntensity: 0.9,
+    chargerLightRadius: 42, chargerLightIntensity: 0.85,
+    flashLightScale: 3.5, emberLightIntensity: 0.7,
+    starfieldBrightness: 1, starfieldStride: 2,
+    // level 3
+    l3HyperspeedTime: 2.4, l3ArriveTime: 2.6, l3TransitDuration: 150, l3SunriseTime: 6,
+    l3Reward: 5000,
+    // level 2 fleet battle
+    l2TriggerTime: 75, l2ChargeupTime: 1.6, l2HyperspeedTime: 2.4, l2ArriveTime: 1.8,
+    l2BattleDuration: 80, l2EnemyInterval: 0.55, l2AllyInterval: 3,
+    l2MaxEnemies: 24, l2MaxAllies: 9, l2Reward: 3200,
+    battleAllyHp: 3, battleAllyFireMin: 0.26, battleAllyFireMax: 0.4,
+    battleAllySpeed: 150, battleAllyHoldDist: 130, battleAllySeparation: 44,
+    // void titan
+    superbossTime: 180,
+    // world spawn
+    rockIntervalBase: 1.1, enemyIntervalBase: 3.2, hazardIntervalBase: 13, nebulaIntervalBase: 24,
+    // player
+    playerFireInterval: 0.18, playerRadius: 16, joystickSpeed: 460
+  };
+  var TUNE_DEFAULTS = JSON.parse(JSON.stringify(TUNE));
+
+  var LIGHT_RES = TUNE.lightRes;
+  var lightQualityScale = 1;
   var lightCanvas = document.createElement('canvas');
   var lightCtx = lightCanvas.getContext('2d');
   var lightScratch = document.createElement('canvas');
@@ -5989,8 +6032,8 @@
   var lightBufW = 0, lightBufH = 0;
   var lights = [];
   var occluders = [];
-  var MAX_SHADOW_LIGHTS = 16;
-  var MAX_CASTERS_PER_LIGHT = 10;
+  var MAX_SHADOW_LIGHTS = TUNE.maxShadowLights;
+  var MAX_CASTERS_PER_LIGHT = TUNE.maxCastersPerLight;
 
   // If a device can't hold the frame, the lighting drops resolution and sheds
   // shadow casters rather than letting the whole game stutter. Hysteresis keeps
@@ -5998,10 +6041,10 @@
   var lightFrameMs = 16.7;
   function tuneLightQuality(frameMs) {
     lightFrameMs += (Math.min(60, frameMs) - lightFrameMs) * 0.06;
-    if (lightFrameMs > 26 && LIGHT_RES > 0.35) {
-      LIGHT_RES = 0.35; MAX_SHADOW_LIGHTS = 8; MAX_CASTERS_PER_LIGHT = 6;
-    } else if (lightFrameMs < 17 && LIGHT_RES < 0.55) {
-      LIGHT_RES = 0.55; MAX_SHADOW_LIGHTS = 16; MAX_CASTERS_PER_LIGHT = 10;
+    if (lightFrameMs > 26 && lightQualityScale > 0.7) {
+      lightQualityScale = 0.64;
+    } else if (lightFrameMs < 17 && lightQualityScale < 1) {
+      lightQualityScale = 1;
     }
   }
 
@@ -6075,13 +6118,17 @@
   }
 
   function buildLightBuffer() {
+    LIGHT_RES = Math.max(0.15, TUNE.lightRes * lightQualityScale);
+    MAX_SHADOW_LIGHTS = Math.round(TUNE.maxShadowLights * lightQualityScale);
+    MAX_CASTERS_PER_LIGHT = Math.max(2, Math.round(TUNE.maxCastersPerLight * lightQualityScale));
     syncLightBuffers();
     // Ambient floor: lerps from "no darkening at all" to near-black as the dark falls.
-    var amb = Math.round(255 - 226 * darkAmbient);
-    var ambB = Math.round(255 - 210 * darkAmbient);
+    var ar = Math.round(255 - (255 - TUNE.darkColorR) * darkAmbient);
+    var ag = Math.round(255 - (255 - TUNE.darkColorG) * darkAmbient);
+    var ab = Math.round(255 - (255 - TUNE.darkColorB) * darkAmbient);
     lightCtx.setTransform(1, 0, 0, 1, 0, 0);
     lightCtx.globalCompositeOperation = 'source-over';
-    lightCtx.fillStyle = 'rgb(' + amb + ',' + amb + ',' + ambB + ')';
+    lightCtx.fillStyle = 'rgb(' + ar + ',' + ag + ',' + ab + ')';
     lightCtx.fillRect(0, 0, lightBufW, lightBufH);
     lightCtx.setTransform(LIGHT_RES, 0, 0, LIGHT_RES, 0, 0);
     lightCtx.globalCompositeOperation = 'lighter';
@@ -6133,12 +6180,12 @@
       scratchCtx.setTransform(LIGHT_RES, 0, 0, LIGHT_RES, 0, 0);
       paintLight(scratchCtx, L);
       scratchCtx.globalCompositeOperation = 'destination-out';
-      var far = L.r * 2.4;
+      var far = L.r * TUNE.shadowReach;
       // A slightly splayed, partial wedge first gives the shadow a soft edge,
       // then the true umbra is cut out at full strength inside it.
-      scratchCtx.fillStyle = 'rgba(0,0,0,0.4)';
+      scratchCtx.fillStyle = 'rgba(0,0,0,' + TUNE.penumbraStrength + ')';
       for (j = 0; j < casters.length; j++) {
-        fillShadowWedge(scratchCtx, L.x, L.y, casters[j].x, casters[j].y, casters[j].r * 1.18, far, 0.055);
+        fillShadowWedge(scratchCtx, L.x, L.y, casters[j].x, casters[j].y, casters[j].r * 1.18, far, TUNE.shadowSoftness);
       }
       scratchCtx.fillStyle = '#000';
       for (j = 0; j < casters.length; j++) {
@@ -6166,10 +6213,10 @@
   function drawDarkStarfield() {
     ctx.save();
     ctx.globalCompositeOperation = 'lighter';
-    for (var i = 0; i < stars.length; i += 2) {
+    for (var i = 0; i < stars.length; i += Math.max(1, Math.round(TUNE.starfieldStride))) {
       var s = stars[i];
       var tw = 0.7 + 0.3 * Math.sin(elapsed * s.twinkleSpeed + s.twinklePhase);
-      ctx.globalAlpha = (0.16 + s.r / 9) * tw * darkAmbient;
+      ctx.globalAlpha = (0.16 + s.r / 9) * tw * darkAmbient * TUNE.starfieldBrightness;
       ctx.fillStyle = s.tint;
       ctx.beginPath();
       ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
@@ -6209,6 +6256,23 @@
         ctx.beginPath();
         ctx.arc(hz.x, hz.y, er * 1.22, spin, spin + Math.PI * 0.75);
         ctx.stroke();
+      } else if (hz.type === 'star') {
+        ctx.globalAlpha = darkAmbient;
+        var cor = ctx.createRadialGradient(hz.x, hz.y, hz.r * 0.7, hz.x, hz.y, hz.r * 2.1);
+        cor.addColorStop(0, 'rgba(255,232,168,0.5)');
+        cor.addColorStop(1, 'rgba(255,168,58,0)');
+        ctx.fillStyle = cor;
+        ctx.beginPath();
+        ctx.arc(hz.x, hz.y, hz.r * 2.1, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#ffeec2';
+        ctx.beginPath();
+        ctx.arc(hz.x, hz.y, hz.r, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath();
+        ctx.arc(hz.x, hz.y, hz.r * 0.74, 0, Math.PI * 2);
+        ctx.fill();
       } else if (hz.type === 'planet') {
         // Aurorae burning over both poles, so an unlit planet still announces
         // itself. They hug the limb and bleed off the edge rather than floating
@@ -6300,38 +6364,38 @@
 
     // ---- the ship's lamps: one small pool at each wingtip, like nav lights ----
     if (!victoryFlight || level3State === 'sunrise') {
-      var wingY = player.y + LAMP_WING_DY;
-      addLight(player.x - LAMP_WING_DX, wingY, LAMP_R, '255,240,214', 0.78, true);
-      addLight(player.x + LAMP_WING_DX, wingY, LAMP_R, '255,240,214', 0.78, true);
+      var wingY = player.y + TUNE.lampWingDY;
+      addLight(player.x - TUNE.lampWingDX, wingY, TUNE.lampRadius, '255,240,214', TUNE.lampIntensity, true);
+      addLight(player.x + TUNE.lampWingDX, wingY, TUNE.lampRadius, '255,240,214', TUNE.lampIntensity, true);
       // Port red / starboard green, just enough to tint the hull's surroundings.
-      addLight(player.x - LAMP_WING_DX, wingY, 26, '255,74,74', 0.5, false);
-      addLight(player.x + LAMP_WING_DX, wingY, 26, '96,255,150', 0.5, false);
+      addLight(player.x - TUNE.lampWingDX, wingY, TUNE.navLightRadius, '255,74,74', TUNE.navLightIntensity, false);
+      addLight(player.x + TUNE.lampWingDX, wingY, TUNE.navLightRadius, '96,255,150', TUNE.navLightIntensity, false);
     }
 
     // ---- suns: the only thing out here that lights the whole field ----
     for (i = 0; i < hazards.length; i++) {
       o = hazards[i];
       if (o.type !== 'star' || o.telegraph > 0) continue;
-      addLight(o.x, o.y, (o.heatRadius || 250) * 1.6, '255,196,104', 1, true);
+      addLight(o.x, o.y, (o.heatRadius || 250) * TUNE.sunLightScale, '255,196,104', TUNE.sunLightIntensity, true);
     }
     if (sunriseSun) {
       addLight(sunriseSun.x, sunriseSun.y, sunriseSun.r, '255,224,160', 1, true);
     }
 
     // ---- ordnance in flight ----
-    for (i = 0; i < bullets.length; i++) addLight(bullets[i].x, bullets[i].y, 34, '158,247,255', 0.14, false);
+    for (i = 0; i < bullets.length; i++) addLight(bullets[i].x, bullets[i].y, TUNE.bulletLightRadius, '158,247,255', TUNE.bulletLightIntensity, false);
     for (i = 0; i < enemyBullets.length; i++) {
-      addLight(enemyBullets[i].x, enemyBullets[i].y, 34, '255,122,156', 0.2, false);
+      addLight(enemyBullets[i].x, enemyBullets[i].y, TUNE.enemyBulletLightRadius, '255,122,156', TUNE.enemyBulletLightIntensity, false);
     }
-    for (i = 0; i < bombs.length; i++) addLight(bombs[i].x, bombs[i].y, 66, '255,194,61', 0.4, true);
-    for (i = 0; i < homingRockets.length; i++) addLight(homingRockets[i].x, homingRockets[i].y, 58, '255,150,70', 0.4, true);
+    for (i = 0; i < bombs.length; i++) addLight(bombs[i].x, bombs[i].y, TUNE.bombLightRadius, '255,194,61', TUNE.bombLightIntensity, true);
+    for (i = 0; i < homingRockets.length; i++) addLight(homingRockets[i].x, homingRockets[i].y, TUNE.rocketLightRadius, '255,150,70', TUNE.rocketLightIntensity, true);
     for (i = 0; i < introRockets.length; i++) addLight(introRockets[i].x, introRockets[i].y, 58, '255,150,70', 0.4, false);
 
     // ---- muzzle flare, explosions and other one-shot flashes ----
     for (i = 0; i < particles.length; i++) {
       o = particles[i];
       if (!o.flash) continue;
-      addLight(o.x, o.y, o.r * 3.5 + 44, '255,238,196', Math.max(0, o.life / o.maxLife), false);
+      addLight(o.x, o.y, o.r * TUNE.flashLightScale + 44, '255,238,196', Math.max(0, o.life / o.maxLife), false);
     }
     for (i = 0; i < blastRings.length; i++) {
       o = blastRings[i];
@@ -6343,7 +6407,7 @@
     for (i = 0; i < debris.length; i++) {
       o = debris[i];
       var ember = Math.max(0, o.life / o.maxLife);
-      if (ember > 0.35) addLight(o.x, o.y, 20 + o.size * 3, '255,150,60', (ember - 0.35) * 0.7, false);
+      if (ember > 0.35) addLight(o.x, o.y, 20 + o.size * 3, '255,150,60', (ember - 0.35) * TUNE.emberLightIntensity, false);
     }
 
     // ---- enemies carrying their own light give themselves away in the dark ----
@@ -6351,12 +6415,12 @@
       o = enemies[i];
       if (o.kind === 'mine') {
         var blink = 0.35 + 0.65 * (0.5 + 0.5 * Math.sin(o.minePulse || 0));
-        addLight(o.x, o.y, 44 + blink * 40, (o.mineCloseness > 0.5 ? '255,90,56' : '255,238,85'), blink * 0.9, false);
+        addLight(o.x, o.y, TUNE.mineLightRadius + blink * 40, (o.mineCloseness > 0.5 ? '255,90,56' : '255,238,85'), blink * TUNE.mineLightIntensity, false);
       } else if (o.kind === 'charger') {
         var telegraph = o.chargerState === 'charging'
           ? 1
           : (o.chargerAimTotal ? 1 - Math.max(0, o.chargerTimer || 0) / o.chargerAimTotal : 0);
-        if (telegraph > 0.25) addLight(o.x, o.y, 42 + telegraph * 44, '255,86,34', telegraph * 0.85, false);
+        if (telegraph > 0.25) addLight(o.x, o.y, TUNE.chargerLightRadius + telegraph * 44, '255,86,34', telegraph * TUNE.chargerLightIntensity, false);
       } else if (o.burning) {
         addLight(o.x, o.y, 52, '255,140,60', 0.45, false);
       }
@@ -6594,6 +6658,110 @@
   handleResize();
   idlePlayerPos();
   requestAnimationFrame(idleLoop);
+
+  // ---------- Live editor bridge ----------
+  // Exposes the tuning table, the game's data collections and a few stage
+  // controls so editor.html can drive this page inside an iframe. Purely
+  // additive: nothing here runs unless the editor calls it.
+  try {
+    var saved = window.localStorage && localStorage.getItem('debrisRunTuning');
+    if (saved) {
+      var patch = JSON.parse(saved);
+      Object.keys(patch).forEach(function (k) {
+        if (typeof TUNE[k] === typeof patch[k]) TUNE[k] = patch[k];
+      });
+      fireInterval = TUNE.playerFireInterval;
+      player.radius = TUNE.playerRadius;
+    }
+  } catch (e) {}
+
+  window.__editor = {
+    version: 1,
+    tune: TUNE,
+    defaults: TUNE_DEFAULTS,
+    collections: {
+      ENEMY_KINDS: ENEMY_KINDS,
+      HAZARD_DEFAULTS: HAZARD_DEFAULTS,
+      HAZARD_UNLOCK: HAZARD_UNLOCK,
+      DIFFICULTIES: DIFFICULTIES,
+      SUPERBOSS_PHASES: SUPERBOSS_PHASES
+    },
+    enemyKinds: function () { return Object.keys(ENEMY_KINDS); },
+    hazardTypes: function () { return Object.keys(HAZARD_DEFAULTS); },
+    set: function (key, value) {
+      if (!(key in TUNE)) return false;
+      TUNE[key] = value;
+      if (key === 'playerFireInterval') fireInterval = value;
+      if (key === 'playerRadius') player.radius = value;
+      return true;
+    },
+    setPath: function (path, value) {
+      var parts = path.split('.');
+      var root = this.collections[parts[0]];
+      if (!root) return false;
+      var node = root;
+      for (var i = 1; i < parts.length - 1; i++) {
+        node = node[parts[i]];
+        if (!node) return false;
+      }
+      node[parts[parts.length - 1]] = value;
+      return true;
+    },
+    resetTune: function () {
+      Object.keys(TUNE_DEFAULTS).forEach(function (k) { TUNE[k] = TUNE_DEFAULTS[k]; });
+      fireInterval = TUNE.playerFireInterval;
+      player.radius = TUNE.playerRadius;
+    },
+    state: function () {
+      return {
+        state: state, level: currentLevel, score: score, lives: lives,
+        elapsed: +elapsed.toFixed(1), darkAmbient: +darkAmbient.toFixed(3),
+        level3State: level3State, level2BossState: level2BossState,
+        superbossState: superbossState,
+        enemies: enemies.length, rocks: rocks.length, allies: allies.length,
+        hazards: hazards.map(function (h) { return h.type; }),
+        lights: lights.length, occluders: occluders.length,
+        lightRes: +LIGHT_RES.toFixed(2), frameMs: +lightFrameMs.toFixed(1),
+        bombs: bombCount
+      };
+    },
+    actions: {
+      start: function (level) { selectedLevel = level || 1; startGame(); },
+      restart: function () { startGame(); },
+      pause: function () { pauseGame(); },
+      resume: function () { resumeGame(); },
+      spawnEnemy: function (kind, x, y) {
+        enemies.push(makeEnemy(kind, x === undefined ? rand(40, width - 40) : x,
+                               y === undefined ? -20 : y));
+      },
+      spawnHazard: function (type, x, y) {
+        spawnHazard(type);
+        var h = hazards[hazards.length - 1];
+        h.telegraph = 0;
+        if (x !== undefined) { h.x = x; h.y = y; }
+      },
+      spawnPowerUp: function () { spawnPowerUp(player.x, Math.max(60, player.y - 160)); },
+      giveBombs: function (n) { bombCount = n; updateBombUI(); },
+      clearField: function () {
+        enemies = enemies.filter(function (e) { return e.scripted; });
+        rocks = []; enemyBullets = []; hazards = [];
+      },
+      freezeSpawns: function (on) {
+        if (on) { rockInterval = 1e9; enemyInterval = 1e9; hazardInterval = 1e9; }
+        else {
+          rockInterval = TUNE.rockIntervalBase * DIFF.spawnMult;
+          enemyInterval = TUNE.enemyIntervalBase * DIFF.spawnMult;
+          hazardInterval = TUNE.hazardIntervalBase;
+        }
+      },
+      invincible: function (on) { editorInvincible = !!on; },
+      setDark: function (v) { darkAmbient = Math.max(0, Math.min(1, v)); },
+      skipToLevel3Sunrise: function () { if (level3State === 'transit') startLevel3Sunrise(); },
+      skipToLevel2Battle: function () {
+        if (currentLevel === 2 && level2BossState === 'idle') startLevel2BossChargeup();
+      }
+    }
+  };
 })();
 </script>
 </body>
