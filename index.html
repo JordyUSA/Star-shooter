@@ -4690,17 +4690,16 @@
       }
     }
 
-    for (var mi = enemies.length - 1; mi >= 0; mi--) {
-      var mineEn = enemies[mi];
-      if (mineEn.kind === 'mine' && mineEn.mineDetonate && !mineEn.scripted) {
-        enemies.splice(mi, 1);
-        score += Math.round(ENEMY_KINDS.mine.score * DIFF.scoreMult);
-        var closeToPlayer = dist(mineEn.x, mineEn.y, player.x, player.y) < mineEn.r + player.radius + 24;
-        triggerSmallExplosion(mineEn.x, mineEn.y);
-        updateHUD();
-        if (closeToPlayer) loseLife();
-      }
-    }
+    var detonatingMines = enemies.filter(function (e) { return e.kind === 'mine' && e.mineDetonate && !e.scripted; });
+    detonatingMines.forEach(function (mineEn) {
+      if (enemies.indexOf(mineEn) === -1) return;
+      enemies = enemies.filter(function (e) { return e !== mineEn; });
+      score += Math.round(ENEMY_KINDS.mine.score * DIFF.scoreMult);
+      var closeToPlayer = dist(mineEn.x, mineEn.y, player.x, player.y) < mineEn.r + player.radius + 24;
+      triggerSmallExplosion(mineEn.x, mineEn.y);
+      updateHUD();
+      if (closeToPlayer) loseLife();
+    });
 
     if (bossActive && !bossActive.dying) {
       for (j = bullets.length - 1; j >= 0; j--) {
