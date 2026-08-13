@@ -365,6 +365,8 @@
   #bossBar.superboss { width: min(85vw, 460px); }
   #bossBar.superboss .boss-name { font-size: 13px; letter-spacing: 3px; text-shadow: 0 0 10px currentColor, 0 0 4px rgba(0,0,0,0.9); }
   #bossBar.superboss .boss-track { height: 14px; box-shadow: 0 0 18px rgba(255,32,80,0.5); }
+  #bossBar.critical .boss-track { box-shadow: 0 0 24px rgba(255,230,168,0.9); }
+  #bossBar.critical .boss-name { color: #ffe6a8; text-shadow: 0 0 12px rgba(255,230,168,0.9); }
 
   #pauseBtn {
     position: fixed;
@@ -801,6 +803,7 @@
     <div class="level-row">
       <button class="level-btn selected" data-level="1">LEVEL 1</button>
       <button class="level-btn" data-level="2">LEVEL 2</button>
+      <button class="level-btn" data-level="3">LEVEL 3</button>
     </div>
     <button class="chaos-toggle">CHAOS MODE: OFF</button>
     <p class="caption">ACHIEVEMENTS</p>
@@ -835,6 +838,7 @@
     <div class="level-row">
       <button class="level-btn selected" data-level="1">LEVEL 1</button>
       <button class="level-btn" data-level="2">LEVEL 2</button>
+      <button class="level-btn" data-level="3">LEVEL 3</button>
     </div>
     <button class="chaos-toggle">CHAOS MODE: OFF</button>
     <p class="caption">ACHIEVEMENTS</p>
@@ -1458,7 +1462,9 @@
     hoarder: { name: 'HOARDER', desc: 'Carry 4 bombs at once', icon: '💣' },
     wanted_curve: { name: 'CURVE LIKE WESLEY', desc: 'Kill an enemy with a shot bent around a black hole', icon: '🌀' },
     deep_explorer: { name: 'DEEP EXPLORER', desc: 'Reach Level 2', icon: '🌌' },
-    fleet_commander: { name: 'FLEET COMMANDER', desc: 'Annihilate the enemy armada', icon: '⚔️' }
+    fleet_commander: { name: 'FLEET COMMANDER', desc: 'Annihilate the enemy armada', icon: '⚔️' },
+    into_the_dark: { name: 'INTO THE DARK', desc: 'Enter the unlit reach', icon: '🕯️' },
+    lightbringer: { name: 'LIGHTBRINGER', desc: 'Cross the dark zone and reach the dawn', icon: '☀️' }
   };
   var ACHIEVEMENTS_STORAGE_KEY = 'debrisRunAchievements';
   var unlockedAchievements = {};
@@ -1686,6 +1692,24 @@
   var BATTLE_ALLY_INTERVAL = 3;
   var BATTLE_MAX_ENEMIES = 24;
   var BATTLE_MAX_ALLIES = 9;
+
+  // ---------- Level 3: the dark ----------
+  var level3State = 'idle'; // idle | hyperspeed | arrive | transit | sunrise | done
+  var level3SeqTimer = 0;
+  var level3TransitTimer = 0;
+  var level3Cleared = false;
+  var level3ClearTime = 0;
+  var level3StartElapsed = null;
+  var sunriseSun = null;
+  // 0 = lit exactly like levels 1-2, 1 = pitch black and lit only by real light sources.
+  var darkAmbient = 0;
+  var LEVEL3_HYPERSPEED_TIME = 2.4;
+  var LEVEL3_ARRIVE_TIME = 2.6;
+  var LEVEL3_TRANSIT_DURATION = 150;
+  var LEVEL3_SUNRISE_TIME = 6;
+  var LAMP_R = 88;       // how far one wing lamp reaches — deliberately tiny
+  var LAMP_WING_DX = 13; // matches the hull's wingtips in drawShip()
+  var LAMP_WING_DY = 12;
   var score = 0;
   var lives = 3;
   var frame = 0;
@@ -2047,6 +2071,13 @@
   }
 
   function pickEnemyKind() {
+    if (currentLevel === 3) {
+      // In the dark everything is on the table, and the kinds that carry their
+      // own light are the only ones you get to see coming.
+      var dark = ['interceptor', 'interceptor', 'strafer', 'gunship', 'sentinel',
+                  'alien', 'charger', 'mine', 'mine'];
+      return dark[Math.floor(Math.random() * dark.length)];
+    }
     var pool = ['interceptor'];
     if (elapsed > 18) pool.push('strafer');
     if (elapsed > 40) pool.push('gunship');
@@ -2297,8 +2328,8 @@
   function updateBombUI() {
     bombCountEl.textContent = bombCount;
     bombBtn.classList.toggle('ready', bombCount > 0);
-    if (bombIconEl) bombIconEl.textContent = currentLevel === 2 ? '🚀' : '💣';
-    bombBtn.setAttribute('aria-label', currentLevel === 2 ? 'Fire rockets' : 'Fire bomb');
+    if (bombIconEl) bombIconEl.textContent = currentLevel >= 2 ? '🚀' : '💣';
+    bombBtn.setAttribute('aria-label', currentLevel >= 2 ? 'Fire rockets' : 'Fire bomb');
   }
 
   function collectBombPickup(p) {
@@ -2476,7 +2507,7 @@
   }
 
   function fireWeapon() {
-    if (currentLevel === 2) fireRockets();
+    if (currentLevel >= 2) fireRockets();
     else fireBomb();
   }
 
@@ -3588,6 +3619,164 @@
     startVictoryFlight();
   }
 
+  // ---------- Level 3: the unlit reach ----------
+  function startLevel3Intro() {
+    currentLevel = 3;
+    level3State = 'hyperspeed';
+    level3SeqTimer = 0;
+    level3TransitTimer = 0;
+    level3Cleared = false;
+    sunriseSun = null;
+    darkAmbient = 0;
+    victoryScreen.classList.add('hidden');
+    victoryFlight = true;
+    victoryFlightTimer = 0;
+    victoryMenuShown = true;
+    superbossSequenceActive = true;
+    superbossState = 'idle';
+    level2BossState = 'idle';
+    nextBossAt = Infinity;
+    if (bombCount < 3) bombCount = 3;
+    updateBombUI();
+    hud.classList.remove('hidden');
+    threatBarEl.classList.remove('show');
+    bossBarEl.classList.add('hidden');
+    pauseBtn.classList.add('hidden');
+    bombBtn.classList.add('hidden');
+    stopSuperbossMusic();
+    stopGameplayMusic();
+    initWarpStreaks();
+    sweepFieldForHyperspeed();
+    letterboxTopEl.classList.add('show');
+    letterboxBottomEl.classList.add('show');
+    showCinematicLine('HYPERSPEED ACTIVATE', '#4ff0ff', true);
+    triggerShake(0.5, 8);
+    flashDamage('rgba(79,240,255,0.45)');
+    playNoise(0.4, 0.2);
+    playTone({ freq: 700, duration: 0.6, type: 'sawtooth', vol: 0.18, slideTo: 1400 });
+    if (navigator.vibrate) navigator.vibrate([30, 20, 80]);
+    checkAchievement('into_the_dark');
+  }
+
+  function updateLevel3Intro(dt) {
+    level3SeqTimer += dt;
+    if (level3State === 'hyperspeed') {
+      updateWarpStreaks(dt, Math.min(1, level3SeqTimer / 0.4));
+      if (level3SeqTimer >= LEVEL3_HYPERSPEED_TIME) {
+        level3State = 'arrive';
+        level3SeqTimer = 0;
+        showCinematicLine('THE UNLIT REACH', '#8fa6ff', true);
+        playTone({ freq: 60, duration: 1.8, type: 'sine', vol: 0.2, slideTo: 22 });
+        playNoise(1.2, 0.09);
+        triggerShake(0.6, 7);
+        if (navigator.vibrate) navigator.vibrate([120, 60, 220]);
+      }
+      return;
+    }
+    updateWarpStreaks(dt, Math.max(0, 1 - level3SeqTimer / 0.6));
+    // The lights go out fast, then settle into total black.
+    darkAmbient = Math.min(1, Math.pow(level3SeqTimer / LEVEL3_ARRIVE_TIME, 0.6));
+    if (level3SeqTimer >= LEVEL3_ARRIVE_TIME) startLevel3Transit();
+  }
+
+  function startLevel3Transit() {
+    level3State = 'transit';
+    level3SeqTimer = 0;
+    level3TransitTimer = 0;
+    level3StartElapsed = elapsed;
+    darkAmbient = 1;
+    victoryFlight = false;
+    victoryMenuShown = false;
+    superbossSequenceActive = false;
+    letterboxTopEl.classList.remove('show');
+    letterboxBottomEl.classList.remove('show');
+    cinematicTextEl.classList.remove('show');
+    bossNameEl.textContent = 'DARK ZONE TRANSIT';
+    bossFillEl.style.width = '0%';
+    bossFillEl.style.background = '#8fa6ff';
+    bossBarEl.classList.remove('hidden');
+    bossBarEl.classList.add('superboss');
+    pauseBtn.classList.remove('hidden');
+    bombBtn.classList.remove('hidden');
+    showBanner('◆ LAMP ONLINE — RUN FOR THE LIGHT', '#ffe6a8');
+    playTone({ freq: 280, duration: 0.5, type: 'sine', vol: 0.12, slideTo: 540 });
+    nextBossAt = elapsed + 55;
+    rockTimer = 1.5;
+    enemyTimer = 2.2;
+    hazardTimer = 8;
+    startGameplayMusic();
+  }
+
+  function updateLevel3Transit(dt) {
+    level3TransitTimer += dt;
+    var pct = Math.min(1, level3TransitTimer / LEVEL3_TRANSIT_DURATION);
+    bossFillEl.style.width = (pct * 100) + '%';
+    bossBarEl.classList.toggle('critical', pct > 0.88);
+    if (pct >= 1) startLevel3Sunrise();
+  }
+
+  function startLevel3Sunrise() {
+    level3State = 'sunrise';
+    level3SeqTimer = 0;
+    superbossSequenceActive = true;
+    sunriseSun = { x: width / 2, y: height + 280, r: 40 };
+    bossBarEl.classList.add('hidden');
+    bossBarEl.classList.remove('superboss');
+    bossBarEl.classList.remove('critical');
+    enemyBullets = [];
+    stopGameplayMusic();
+    showCinematicLine('DAWN', '#ffe6a8', true);
+    showBanner('☀ STARRISE', '#ffc23d');
+    playTone({ freq: 110, duration: 2.6, type: 'sine', vol: 0.2, slideTo: 760 });
+    playNoise(1.8, 0.07);
+    triggerShake(1.4, 6);
+    if (navigator.vibrate) navigator.vibrate([60, 40, 60, 40, 320]);
+  }
+
+  function updateLevel3Sunrise(dt) {
+    level3SeqTimer += dt;
+    var t = Math.min(1, level3SeqTimer / LEVEL3_SUNRISE_TIME);
+    var ease = t * t;
+    // A star climbs into frame; its light grows until the darkness is gone.
+    sunriseSun.x = width / 2;
+    sunriseSun.y = height + 280 - ease * (height * 0.74 + 280);
+    sunriseSun.r = 40 + ease * Math.max(width, height) * 2;
+    darkAmbient = Math.max(0, 1 - Math.max(0, (t - 0.4) / 0.6));
+    // Anything still out in the dark burns away as the light reaches it.
+    if (t > 0.45) {
+      enemies.forEach(function (en) {
+        if (!en.scripted) en.burnHeat = Math.min(100, (en.burnHeat || 0) + 150 * dt);
+      });
+      if (rocks.length) rocks = rocks.filter(function () { return Math.random() > dt * 2.4; });
+    }
+    if (t >= 1) finishLevel3();
+  }
+
+  function finishLevel3() {
+    var reward = Math.round(5000 * DIFF.scoreMult);
+    score += reward;
+    level3State = 'done';
+    level3Cleared = true;
+    level3ClearTime = elapsed;
+    darkAmbient = 0;
+    sunriseSun = null;
+    enemies = enemies.filter(function (en) { return en.scripted; });
+    rocks = [];
+    enemyBullets = [];
+    hazards = [];
+    spawnFlash(width / 2, height * 0.3, '#ffffff', 240);
+    spawnBlastRing(width / 2, height * 0.3, Math.max(width, height), '#ffe6a8', 1.2, 0);
+    triggerSunburst(width / 2, height * 0.28, 3.2);
+    triggerShake(1.2, 10);
+    showBanner('THE DARK IS BEHIND YOU +' + reward, '#ffe6a8');
+    showCinematicLine('YOU MADE IT OUT', '#ffe6a8', true);
+    setTimeout(playVictoryFanfare, 300);
+    checkAchievement('lightbringer');
+    superbossSequenceActive = true;
+    updateHUD();
+    startVictoryFlight();
+  }
+
   // ---------- Superboss spawn / step engine ----------
   function spawnSuperboss() {
     var maxHp = Math.round(900 * DIFF.bossHpMult);
@@ -3860,12 +4049,16 @@
     if (level2BossDefeated) {
       rows.push('<div class="stat-row victory">⚔ ENEMY FLEET ANNIHILATED IN ' + formatTime(level2BossDefeatTime - level2BossBattleStartTime) + '</div>');
     }
+    if (level3Cleared) {
+      rows.push('<div class="stat-row victory">☀ DARK ZONE CROSSED IN ' + formatTime(level3ClearTime - level3StartElapsed) + '</div>');
+      rows.push('<div class="stat-row victory">★ ALL THREE SECTORS CLEARED</div>');
+    }
     victoryStatEl.innerHTML = rows.join('');
     renderAchievementRow();
     hud.classList.add('hidden');
     threatBarEl.classList.remove('show');
     heatBarEl.classList.remove('show');
-    nextLevelBtn.classList.toggle('hidden', currentLevel >= 2);
+    nextLevelBtn.classList.toggle('hidden', currentLevel >= 3);
     victoryScreen.classList.remove('hidden');
     playTone({ freq: 440, duration: 0.5, type: 'triangle', vol: 0.14, slideTo: 660 });
     setTimeout(function () { playTone({ freq: 660, duration: 0.8, type: 'triangle', vol: 0.14, slideTo: 880 }); }, 220);
@@ -4086,7 +4279,7 @@
 
   function endGame(causeTitle) {
     state = 'gameover';
-    var anyBossDefeated = titanDefeated || level2BossDefeated;
+    var anyBossDefeated = titanDefeated || level2BossDefeated || level3Cleared;
     gameOverTitleEl.textContent = causeTitle || 'GAME OVER';
     gameOverTitleEl.classList.toggle('victory', anyBossDefeated);
     gameOverTitleEl.classList.toggle('danger', !anyBossDefeated);
@@ -4108,6 +4301,11 @@
       rows.push('<div class="stat-row victory">⚔ ENEMY FLEET ANNIHILATED IN ' + formatTime(level2BossDefeatTime - level2BossBattleStartTime) + '</div>');
     } else if (level2BossState !== 'idle' && level2BossState !== 'defeated') {
       rows.push('<div class="stat-row fallen">ENEMY FLEET — ENGAGED (UNFINISHED)</div>');
+    }
+    if (level3Cleared) {
+      rows.push('<div class="stat-row victory">☀ DARK ZONE CROSSED IN ' + formatTime(level3ClearTime - level3StartElapsed) + '</div>');
+    } else if (level3State === 'transit') {
+      rows.push('<div class="stat-row fallen">DARK ZONE — ' + Math.floor(Math.min(1, level3TransitTimer / LEVEL3_TRANSIT_DURATION) * 100) + '% TRANSITED (LOST IN THE DARK)</div>');
     }
     bossStatEl.innerHTML = rows.join('');
 
@@ -4179,6 +4377,7 @@
     victoryFlightTimer = 0;
     victoryMenuShown = false;
     currentLevel = selectedLevel === 2 ? 1 : selectedLevel;
+    darkAmbient = 0;
     titanDefeated = false;
     levelIntroState = 'idle';
     levelIntroTimer = 0;
@@ -4200,6 +4399,15 @@
     level2StartElapsed = null;
     battleEnemyTimer = 0;
     battleAllyTimer = 0;
+    level3State = 'idle';
+    level3SeqTimer = 0;
+    level3TransitTimer = 0;
+    level3Cleared = false;
+    level3ClearTime = 0;
+    level3StartElapsed = null;
+    sunriseSun = null;
+    lights.length = 0;
+    occluders.length = 0;
     resetJoystick();
     clearBuffUI();
     updateBombUI();
@@ -4218,6 +4426,7 @@
     requestAnimationFrame(loop);
     if (chaosMode) showBanner('\u26A0 CHAOS MODE ACTIVE', '#ff3d6b');
     if (selectedLevel === 2) startLevelIntro();
+    else if (selectedLevel === 3) startLevel3Intro();
   }
 
   startBtn.addEventListener('click', startGame);
@@ -4334,7 +4543,8 @@
     startGame();
   });
   nextLevelBtn.addEventListener('click', function () {
-    startLevelIntro();
+    if (currentLevel >= 2) startLevel3Intro();
+    else startLevelIntro();
   });
 
   window.addEventListener('keydown', function (e) {
@@ -4530,7 +4740,11 @@
     });
     allies = allies.filter(function (a) { if (a.scripted || a.battleAlly) return true; return !(a.leaving && a.y < -70); });
 
-    var superbossHoldsField = superbossState !== 'idle' || victoryFlight || level2BossState !== 'idle';
+    // The transit is ordinary (if pitch-black) play, so only level 3's cinematic
+    // beats freeze the spawners.
+    var level3HoldsField = level3State === 'hyperspeed' || level3State === 'arrive' || level3State === 'sunrise';
+    var superbossHoldsField = superbossState !== 'idle' || victoryFlight ||
+      level2BossState !== 'idle' || level3HoldsField;
 
     rockTimer -= dt;
     if (rockTimer <= 0 && !superbossHoldsField) {
@@ -4578,14 +4792,28 @@
       updateLevel2BossBattle(dt);
     }
 
+    if (level3State === 'hyperspeed' || level3State === 'arrive') {
+      updateLevel3Intro(dt);
+    } else if (level3State === 'transit') {
+      updateLevel3Transit(dt);
+    } else if (level3State === 'sunrise') {
+      updateLevel3Sunrise(dt);
+    }
+
     hazardTimer -= dt;
     if (hazardTimer <= 0) {
       hazardTimer = rand(hazardInterval * 0.8, hazardInterval * 1.2);
       if (!superbossHoldsField) {
         var available = [];
+        if (currentLevel === 3) {
+          // Out here a star is the only thing that lights the field, so they are
+          // always on the table and weighted heavily — the rest are dark mass.
+          available.push('star', 'star', 'blackhole', 'planet');
+        } else {
         if (elapsed >= HAZARD_UNLOCK.star) available.push('star');
         if (elapsed >= HAZARD_UNLOCK.blackhole) available.push('blackhole');
         if (elapsed >= HAZARD_UNLOCK.planet) available.push('planet');
+        }
         available = available.filter(function (t) { return !hazards.some(function (h) { return h.type === t; }); });
         if (available.length > 0 && hazards.length < 3) {
           spawnHazard(available[Math.floor(Math.random() * available.length)]);
@@ -5746,6 +5974,322 @@
     ctx.restore();
   }
 
+  // ---------- Dynamic lighting and shadow casting (level 3) ----------
+  // Every light is accumulated into a half-resolution buffer which is then
+  // multiplied over the finished frame, so anything no light reaches simply
+  // stays black. Lights that cast shadows get their own scratch pass: the
+  // occluders' umbra wedges are punched out of that light's gradient *before*
+  // it is added to the buffer, which keeps each shadow tied to the light that
+  // threw it instead of darkening the whole scene.
+  var LIGHT_RES = 0.4;
+  var lightCanvas = document.createElement('canvas');
+  var lightCtx = lightCanvas.getContext('2d');
+  var lightScratch = document.createElement('canvas');
+  var scratchCtx = lightScratch.getContext('2d');
+  var lightBufW = 0, lightBufH = 0;
+  var lights = [];
+  var occluders = [];
+  var MAX_SHADOW_LIGHTS = 16;
+  var MAX_CASTERS_PER_LIGHT = 10;
+
+  // If a device can't hold the frame, the lighting drops resolution and sheds
+  // shadow casters rather than letting the whole game stutter. Hysteresis keeps
+  // it from flapping between the two settings.
+  var lightFrameMs = 16.7;
+  function tuneLightQuality(frameMs) {
+    lightFrameMs += (Math.min(60, frameMs) - lightFrameMs) * 0.06;
+    if (lightFrameMs > 26 && LIGHT_RES > 0.3) {
+      LIGHT_RES = 0.3; MAX_SHADOW_LIGHTS = 8; MAX_CASTERS_PER_LIGHT = 6;
+    } else if (lightFrameMs < 17 && LIGHT_RES < 0.4) {
+      LIGHT_RES = 0.4; MAX_SHADOW_LIGHTS = 16; MAX_CASTERS_PER_LIGHT = 10;
+    }
+  }
+
+  // Radial gradients are expensive to build, so each light colour is baked once
+  // into a sprite and then just blitted at whatever size the light needs.
+  var lightSpriteCache = {};
+  var LIGHT_SPRITE_PX = 128;
+  function lightSprite(color) {
+    var sprite = lightSpriteCache[color];
+    if (sprite) return sprite;
+    sprite = document.createElement('canvas');
+    sprite.width = sprite.height = LIGHT_SPRITE_PX;
+    var sc = sprite.getContext('2d');
+    var half = LIGHT_SPRITE_PX / 2;
+    var g = sc.createRadialGradient(half, half, 0, half, half, half);
+    g.addColorStop(0, 'rgba(' + color + ',1)');
+    g.addColorStop(0.22, 'rgba(' + color + ',0.72)');
+    g.addColorStop(0.5, 'rgba(' + color + ',0.26)');
+    g.addColorStop(1, 'rgba(' + color + ',0)');
+    sc.fillStyle = g;
+    sc.fillRect(0, 0, LIGHT_SPRITE_PX, LIGHT_SPRITE_PX);
+    lightSpriteCache[color] = sprite;
+    return sprite;
+  }
+
+  function syncLightBuffers() {
+    var w = Math.max(1, Math.floor(width * LIGHT_RES));
+    var h = Math.max(1, Math.floor(height * LIGHT_RES));
+    if (w === lightBufW && h === lightBufH) return;
+    lightBufW = w; lightBufH = h;
+    lightCanvas.width = w; lightCanvas.height = h;
+    lightScratch.width = w; lightScratch.height = h;
+  }
+
+  function addLight(x, y, r, color, intensity, shadows) {
+    if (r <= 0 || intensity <= 0.02) return;
+    if (x + r < 0 || x - r > width || y + r < 0 || y - r > height) return;
+    lights.push({ x: x, y: y, r: r, color: color, intensity: intensity, shadows: !!shadows });
+  }
+
+  function addOccluder(x, y, r) {
+    if (r > 3) occluders.push({ x: x, y: y, r: r });
+  }
+
+  // The wedge of space a circular occluder hides from a light, extended well
+  // past the light's own reach so the far edge never clips inside the gradient.
+  function fillShadowWedge(c, lx, ly, cx, cy, cr, far, spread) {
+    var dx = cx - lx, dy = cy - ly;
+    var d2 = dx * dx + dy * dy;
+    if (d2 <= cr * cr || d2 === 0) return;
+    var d = Math.sqrt(d2);
+    var len = Math.sqrt(d2 - cr * cr);
+    var base = Math.atan2(dy, dx);
+    var beta = Math.asin(Math.min(0.999, cr / d)) + spread;
+    var a1 = base - beta, a2 = base + beta;
+    c.beginPath();
+    c.moveTo(lx + Math.cos(a1) * len, ly + Math.sin(a1) * len);
+    c.lineTo(lx + Math.cos(a1) * far, ly + Math.sin(a1) * far);
+    c.lineTo(lx + Math.cos(base) * far, ly + Math.sin(base) * far);
+    c.lineTo(lx + Math.cos(a2) * far, ly + Math.sin(a2) * far);
+    c.lineTo(lx + Math.cos(a2) * len, ly + Math.sin(a2) * len);
+    c.closePath();
+    c.fill();
+  }
+
+  function paintLight(c, L) {
+    var prev = c.globalAlpha;
+    c.globalAlpha = prev * L.intensity;
+    c.drawImage(lightSprite(L.color), L.x - L.r, L.y - L.r, L.r * 2, L.r * 2);
+    c.globalAlpha = prev;
+  }
+
+  function buildLightBuffer() {
+    syncLightBuffers();
+    // Ambient floor: lerps from "no darkening at all" to near-black as the dark falls.
+    var amb = Math.round(255 - 252 * darkAmbient);
+    var ambB = Math.round(255 - 249 * darkAmbient);
+    lightCtx.setTransform(1, 0, 0, 1, 0, 0);
+    lightCtx.globalCompositeOperation = 'source-over';
+    lightCtx.fillStyle = 'rgb(' + amb + ',' + amb + ',' + ambB + ')';
+    lightCtx.fillRect(0, 0, lightBufW, lightBufH);
+    lightCtx.setTransform(LIGHT_RES, 0, 0, LIGHT_RES, 0, 0);
+    lightCtx.globalCompositeOperation = 'lighter';
+
+    // Big lights dominate the look, so they get first claim on the shadow budget.
+    lights.sort(function (a, b) { return b.r - a.r; });
+    var budget = MAX_SHADOW_LIGHTS;
+    var i, j;
+
+    for (i = 0; i < lights.length; i++) {
+      var L = lights[i];
+      var casters = null;
+      if (L.shadows && budget > 0 && occluders.length) {
+        for (j = 0; j < occluders.length; j++) {
+          var o = occluders[j];
+          var ox = o.x - L.x, oy = o.y - L.y;
+          var od2 = ox * ox + oy * oy;
+          var reach = L.r + o.r;
+          if (od2 < reach * reach) {
+            if (!casters) casters = [];
+            o.lightD2 = od2;
+            casters.push(o);
+          }
+        }
+        if (casters && casters.length > MAX_CASTERS_PER_LIGHT) {
+          casters.sort(function (a, b) { return a.lightD2 - b.lightD2; });
+          casters.length = MAX_CASTERS_PER_LIGHT;
+        }
+      }
+      if (!casters) {
+        paintLight(lightCtx, L);
+        continue;
+      }
+      budget--;
+      var pad = 8;
+      var bx = L.x - L.r - pad, by = L.y - L.r - pad, bs = L.r * 2 + pad * 2;
+      // Clear, paint and blit all use this one buffer-space rect, clamped to the
+      // canvas. Deriving the blit from an unclamped box instead would let a light
+      // hanging off an edge copy back stale pixels left by an earlier, larger one.
+      var x0 = Math.max(0, Math.floor(bx * LIGHT_RES));
+      var y0 = Math.max(0, Math.floor(by * LIGHT_RES));
+      var x1 = Math.min(lightBufW, Math.ceil((bx + bs) * LIGHT_RES) + 1);
+      var y1 = Math.min(lightBufH, Math.ceil((by + bs) * LIGHT_RES) + 1);
+      var bw = x1 - x0, bh = y1 - y0;
+      if (bw <= 0 || bh <= 0) continue;
+      scratchCtx.setTransform(1, 0, 0, 1, 0, 0);
+      scratchCtx.globalCompositeOperation = 'source-over';
+      scratchCtx.clearRect(x0, y0, bw, bh);
+      scratchCtx.setTransform(LIGHT_RES, 0, 0, LIGHT_RES, 0, 0);
+      paintLight(scratchCtx, L);
+      scratchCtx.globalCompositeOperation = 'destination-out';
+      var far = L.r * 2.4;
+      // A slightly splayed, partial wedge first gives the shadow a soft edge,
+      // then the true umbra is cut out at full strength inside it.
+      scratchCtx.fillStyle = 'rgba(0,0,0,0.4)';
+      for (j = 0; j < casters.length; j++) {
+        fillShadowWedge(scratchCtx, L.x, L.y, casters[j].x, casters[j].y, casters[j].r * 1.18, far, 0.055);
+      }
+      scratchCtx.fillStyle = '#000';
+      for (j = 0; j < casters.length; j++) {
+        fillShadowWedge(scratchCtx, L.x, L.y, casters[j].x, casters[j].y, casters[j].r, far, 0);
+      }
+      scratchCtx.globalCompositeOperation = 'source-over';
+
+      lightCtx.setTransform(1, 0, 0, 1, 0, 0);
+      lightCtx.drawImage(lightScratch, x0, y0, bw, bh, x0, y0, bw, bh);
+      lightCtx.setTransform(LIGHT_RES, 0, 0, LIGHT_RES, 0, 0);
+    }
+    lightCtx.setTransform(1, 0, 0, 1, 0, 0);
+    lightCtx.globalCompositeOperation = 'source-over';
+  }
+
+  function compositeLighting() {
+    ctx.save();
+    ctx.globalCompositeOperation = 'multiply';
+    ctx.drawImage(lightCanvas, 0, 0, width, height);
+    ctx.restore();
+  }
+
+  // Distant stars emit their own light, so they are laid back over the darkness
+  // additively rather than being multiplied away with everything else.
+  function drawDarkStarfield() {
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    for (var i = 0; i < stars.length; i += 3) {
+      var s = stars[i];
+      var tw = 0.7 + 0.3 * Math.sin(elapsed * s.twinkleSpeed + s.twinklePhase);
+      ctx.globalAlpha = (0.1 + s.r / 14) * tw * darkAmbient;
+      ctx.fillStyle = s.tint;
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  // The hull is re-drawn over the darkness so the player never loses track of
+  // their own ship, and the wingtip bulbs are painted on top of it.
+  function drawLampHousing() {
+    if (player.invincible > 0 && Math.floor(frame / 4) % 2 === 0) return;
+    ctx.save();
+    ctx.globalAlpha = 0.85 * darkAmbient;
+    drawShip(player.x, player.y, false);
+    ctx.restore();
+
+    var wingY = player.y + LAMP_WING_DY;
+    var strobe = 0.5 + 0.5 * Math.pow(Math.max(0, Math.sin(elapsed * 3.4)), 8);
+    var bulbs = [
+      { x: player.x - LAMP_WING_DX, c: '#ff4a4a' },
+      { x: player.x + LAMP_WING_DX, c: '#60ff96' }
+    ];
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.globalAlpha = darkAmbient;
+    for (var b = 0; b < bulbs.length; b++) {
+      ctx.fillStyle = bulbs[b].c;
+      ctx.shadowColor = bulbs[b].c;
+      ctx.shadowBlur = 10 * strobe;
+      ctx.beginPath();
+      ctx.arc(bulbs[b].x, wingY, 2.4, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  function collectSceneLights() {
+    lights.length = 0;
+    occluders.length = 0;
+    var i, o;
+
+    // ---- occluders: anything solid enough to throw a shadow ----
+    for (i = 0; i < rocks.length; i++) addOccluder(rocks[i].x, rocks[i].y, rocks[i].r);
+    for (i = 0; i < enemies.length; i++) addOccluder(enemies[i].x, enemies[i].y, enemies[i].r);
+    for (i = 0; i < allies.length; i++) addOccluder(allies[i].x, allies[i].y, 11);
+    for (i = 0; i < hazards.length; i++) {
+      o = hazards[i];
+      if (o.telegraph > 0) continue;
+      if (o.type === 'planet') addOccluder(o.x, o.y, o.r);
+      else if (o.type === 'blackhole') addOccluder(o.x, o.y, o.eventHorizon || o.r);
+    }
+    if (bossActive && !bossActive.dying) addOccluder(bossActive.x, bossActive.y, bossActive.r);
+    if (superboss && !superboss.entering) addOccluder(superboss.x, superboss.y, superboss.r);
+
+    // ---- the ship's lamps: one small pool at each wingtip, like nav lights ----
+    if (!victoryFlight || level3State === 'sunrise') {
+      var wingY = player.y + LAMP_WING_DY;
+      addLight(player.x - LAMP_WING_DX, wingY, LAMP_R, '255,240,214', 0.78, true);
+      addLight(player.x + LAMP_WING_DX, wingY, LAMP_R, '255,240,214', 0.78, true);
+      // Port red / starboard green, just enough to tint the hull's surroundings.
+      addLight(player.x - LAMP_WING_DX, wingY, 26, '255,74,74', 0.5, false);
+      addLight(player.x + LAMP_WING_DX, wingY, 26, '96,255,150', 0.5, false);
+    }
+
+    // ---- suns: the only thing out here that lights the whole field ----
+    for (i = 0; i < hazards.length; i++) {
+      o = hazards[i];
+      if (o.type !== 'star' || o.telegraph > 0) continue;
+      addLight(o.x, o.y, (o.heatRadius || 250) * 1.6, '255,196,104', 1, true);
+    }
+    if (sunriseSun) {
+      addLight(sunriseSun.x, sunriseSun.y, sunriseSun.r, '255,224,160', 1, true);
+    }
+
+    // ---- ordnance in flight ----
+    for (i = 0; i < bullets.length; i++) addLight(bullets[i].x, bullets[i].y, 34, '158,247,255', 0.14, false);
+    for (i = 0; i < enemyBullets.length; i++) {
+      addLight(enemyBullets[i].x, enemyBullets[i].y, 34, '255,122,156', 0.2, false);
+    }
+    for (i = 0; i < bombs.length; i++) addLight(bombs[i].x, bombs[i].y, 66, '255,194,61', 0.4, true);
+    for (i = 0; i < homingRockets.length; i++) addLight(homingRockets[i].x, homingRockets[i].y, 58, '255,150,70', 0.4, true);
+    for (i = 0; i < introRockets.length; i++) addLight(introRockets[i].x, introRockets[i].y, 58, '255,150,70', 0.4, false);
+
+    // ---- muzzle flare, explosions and other one-shot flashes ----
+    for (i = 0; i < particles.length; i++) {
+      o = particles[i];
+      if (!o.flash) continue;
+      addLight(o.x, o.y, o.r * 3.5 + 44, '255,238,196', Math.max(0, o.life / o.maxLife), false);
+    }
+    for (i = 0; i < blastRings.length; i++) {
+      o = blastRings[i];
+      if (o.delay > 0) continue;
+      var ringT = 1 - Math.max(0, o.life / o.maxLife);
+      addLight(o.x, o.y, o.maxR * (0.4 + ringT), '255,212,152', (1 - ringT) * 0.9, false);
+    }
+    // Fresh shrapnel still glows hot for a moment after a kill.
+    for (i = 0; i < debris.length; i++) {
+      o = debris[i];
+      var ember = Math.max(0, o.life / o.maxLife);
+      if (ember > 0.35) addLight(o.x, o.y, 20 + o.size * 3, '255,150,60', (ember - 0.35) * 0.7, false);
+    }
+
+    // ---- enemies carrying their own light give themselves away in the dark ----
+    for (i = 0; i < enemies.length; i++) {
+      o = enemies[i];
+      if (o.kind === 'mine') {
+        var blink = 0.35 + 0.65 * (0.5 + 0.5 * Math.sin(o.minePulse || 0));
+        addLight(o.x, o.y, 44 + blink * 40, (o.mineCloseness > 0.5 ? '255,90,56' : '255,238,85'), blink * 0.9, false);
+      } else if (o.kind === 'charger') {
+        var telegraph = o.chargerState === 'charging'
+          ? 1
+          : (o.chargerAimTotal ? 1 - Math.max(0, o.chargerTimer || 0) / o.chargerAimTotal : 0);
+        if (telegraph > 0.25) addLight(o.x, o.y, 42 + telegraph * 44, '255,86,34', telegraph * 0.85, false);
+      } else if (o.burning) {
+        addLight(o.x, o.y, 52, '255,140,60', 0.45, false);
+      }
+    }
+  }
+
   function render() {
     ctx.clearRect(0, 0, width, height);
 
@@ -5757,31 +6301,47 @@
     ctx.save();
     ctx.translate(shakeX, shakeY);
 
-    bgClouds.forEach(drawBgCloud);
+    var voidLit = darkAmbient < 0.35;
 
-    ctx.fillStyle = '#cfe0ff';
-    dust.forEach(function (d) {
-      ctx.globalAlpha = d.alpha;
-      ctx.fillRect(d.x, d.y, d.r, d.r);
-    });
-    ctx.globalAlpha = 1;
+    if (voidLit) {
+      bgClouds.forEach(drawBgCloud);
 
-    stars.forEach(function (s) {
-      var tw = 0.7 + 0.3 * Math.sin(elapsed * s.twinkleSpeed + s.twinklePhase);
-      ctx.globalAlpha = (0.5 + s.r / 3) * tw;
-      ctx.fillStyle = s.tint;
-      ctx.beginPath();
-      ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
-      ctx.fill();
-    });
-    ctx.globalAlpha = 1;
+      ctx.fillStyle = '#cfe0ff';
+      dust.forEach(function (d) {
+        ctx.globalAlpha = d.alpha;
+        ctx.fillRect(d.x, d.y, d.r, d.r);
+      });
+      ctx.globalAlpha = 1;
+    }
 
+    // In the dark the starfield is re-drawn additively after the lighting pass —
+    // stars are light sources in their own right, so the darkness must not eat them.
+    if (voidLit) {
+      stars.forEach(function (s) {
+        var tw = 0.7 + 0.3 * Math.sin(elapsed * s.twinkleSpeed + s.twinklePhase);
+        ctx.globalAlpha = (0.5 + s.r / 3) * tw;
+        ctx.fillStyle = s.tint;
+        ctx.beginPath();
+        ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
+        ctx.fill();
+      });
+      ctx.globalAlpha = 1;
+    }
+
+    // Every hyperspeed jump in the game draws the same streak field — the Void
+    // Titan's, both level transitions, and the level 2 fleet jump.
     var warpAlpha = 0;
     if (superbossState === 'hyperspeed') warpAlpha = Math.min(1, superbossSeqTimer / 0.4);
     else if (superbossState === 'detected') warpAlpha = Math.max(0, 1 - superbossSeqTimer / 0.5);
+    else if (levelIntroState === 'hyperspeed') warpAlpha = Math.min(1, levelIntroTimer / 0.4);
+    else if (levelIntroState === 'arrive') warpAlpha = Math.max(0, 1 - levelIntroTimer / 0.5);
+    else if (level2BossState === 'hyperspeed') warpAlpha = Math.min(1, level2BossSeqTimer / 0.4);
+    else if (level2BossState === 'arrive') warpAlpha = Math.max(0, 1 - level2BossSeqTimer / 0.5);
+    else if (level3State === 'hyperspeed') warpAlpha = Math.min(1, level3SeqTimer / 0.4);
+    else if (level3State === 'arrive') warpAlpha = Math.max(0, 1 - level3SeqTimer / 0.6);
     if (warpAlpha > 0) drawWarpStreaks(warpAlpha);
 
-    nebulae.forEach(drawNebula);
+    if (voidLit) nebulae.forEach(drawNebula);
 
     hazards.forEach(function (hz) {
       if (hz.type === 'blackhole') drawBlackHole(hz);
@@ -5881,6 +6441,14 @@
 
     if (currentLevel === 2) fgClouds.forEach(drawForegroundCloud);
 
+    if (darkAmbient > 0.001) {
+      collectSceneLights();
+      buildLightBuffer();
+      compositeLighting();
+      if (darkAmbient > 0.15) drawDarkStarfield();
+      drawLampHousing();
+    }
+
     ctx.restore();
 
     if (joystickEnabled() && state === 'playing' && !victoryFlight) drawJoystick();
@@ -5929,6 +6497,7 @@
     }
     update(dt);
     render();
+    if (darkAmbient > 0.001) tuneLightQuality(dt * 1000);
     requestAnimationFrame(loop);
   }
 
