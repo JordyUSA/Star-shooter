@@ -32,19 +32,19 @@
   #game { display: block; border: 0; width: 420px; height: 800px; }
   #stageBar, #stageBar2 {
     display: flex; flex-wrap: wrap; gap: 6px; justify-content: center;
-    max-width: 820px;
+    max-width: 860px;
   }
   #readout {
     font-family: ui-monospace, Menlo, Consolas, monospace;
     font-size: 11px; line-height: 1.5; color: #8fa6d8;
     background: rgba(10,14,30,0.7); border: 1px solid rgba(120,160,255,0.18);
-    border-radius: 8px; padding: 8px 10px; max-width: 820px; width: 100%;
+    border-radius: 8px; padding: 8px 10px; max-width: 860px; width: 100%;
     white-space: pre-wrap; word-break: break-word;
   }
 
   /* ---------- panel ---------- */
   #panel {
-    flex: 0 0 430px; max-width: 48vw;
+    flex: 0 0 440px; max-width: 48vw;
     background: #0c1122; border-left: 1px solid rgba(120,160,255,0.2);
     display: flex; flex-direction: column; overflow: hidden;
   }
@@ -69,21 +69,32 @@
     font-family: 'Orbitron', sans-serif; font-size: 10px; letter-spacing: 1.6px;
     color: #9fb6ee; background: rgba(255,255,255,0.02);
     display: flex; justify-content: space-between; align-items: center;
+    position: sticky; top: 0; z-index: 2;
   }
   summary::-webkit-details-marker { display: none; }
   summary:hover { color: #7fe9ff; }
   summary .count { font-family: ui-monospace, monospace; opacity: 0.5; font-size: 10px; }
   .group-body { padding: 6px 14px 12px; }
+  .group-note {
+    font-size: 11.5px; line-height: 1.5; color: #7d90bd;
+    border-left: 2px solid rgba(127,233,255,0.35); padding: 2px 0 2px 8px;
+    margin: 2px 0 10px;
+  }
 
-  .row { display: block; margin-bottom: 9px; }
+  .row { display: block; margin-bottom: 11px; }
   .row label {
     display: block; font-size: 12.5px; color: #b8c8ee;
-    margin-bottom: 3px; line-height: 1.3;
+    margin-bottom: 2px; line-height: 1.3;
   }
+  .row .help {
+    display: block; font-size: 11px; line-height: 1.45;
+    color: #6f83b0; margin-bottom: 4px;
+  }
+  .row .help .cost { color: #e8a94f; }
   .ctl { display: flex; align-items: center; gap: 8px; }
   .row input[type=range] { flex: 1 1 auto; min-width: 0; accent-color: #4ff0ff; }
   .row input[type=number] {
-    flex: 0 0 74px; padding: 4px 6px; font-size: 12px;
+    flex: 0 0 76px; padding: 4px 6px; font-size: 12px;
     border-radius: 6px; border: 1px solid rgba(120,160,255,0.28);
     background: #060a16; color: #dfe7ff; font-family: ui-monospace, monospace;
   }
@@ -96,8 +107,19 @@
     border-radius: 6px; border: 1px solid rgba(120,160,255,0.28);
     background: #060a16; color: #dfe7ff; font-family: ui-monospace, monospace;
   }
+  .row .undo {
+    flex: 0 0 auto; visibility: hidden; padding: 2px 6px; font-size: 11px;
+    line-height: 1.3; border-radius: 5px;
+  }
   .row.changed label { color: #ffd479; }
   .row.changed label::after { content: ' •'; color: #ffd479; }
+  .row.changed .undo { visibility: visible; }
+
+  .subhead {
+    font-family: 'Orbitron', sans-serif; font-size: 9px; letter-spacing: 1.4px;
+    color: #7fe9ff; margin: 14px 0 6px; padding-top: 8px;
+    border-top: 1px solid rgba(120,160,255,0.12);
+  }
 
   button, select {
     font-family: 'Rajdhani', sans-serif; font-weight: 700; font-size: 12px;
@@ -115,6 +137,7 @@
     background: rgba(255,80,110,0.12); border: 1px solid rgba(255,120,140,0.45);
     color: #ffc3cf; font-size: 12.5px; line-height: 1.5;
   }
+  #err code { color: #ffe7a8; }
   @media (max-width: 900px) {
     #app { flex-direction: column; }
     #panel { flex: 1 1 auto; max-width: none; border-left: 0; border-top: 1px solid rgba(120,160,255,0.2); }
@@ -138,11 +161,14 @@
       <div style="display:flex;gap:6px;flex-wrap:wrap">
         <button id="btnExport">Copy JSON</button>
         <button id="btnImport">Paste JSON</button>
+        <button id="btnFast" title="Lowest-cost settings that still look like the game">Fast preset</button>
+        <button id="btnPretty" title="Everything on, for a machine that can take it">Pretty preset</button>
         <button id="btnReset" class="warn">Reset all</button>
       </div>
     </div>
     <div id="err"></div>
-    <div class="sub" id="hint">Changes apply live. They are saved in this browser and survive a restart of the preview.</div>
+    <div class="sub" id="hint">Changes apply live and are saved in this browser, so they survive reloading the
+      preview. A dot marks anything you have changed from the default — click <b>↺</b> to put just that one back.</div>
     <div id="panelBody"></div>
   </div>
 </div>
@@ -156,84 +182,252 @@
   var readout = document.getElementById('readout');
   var errBox = document.getElementById('err');
   var api = null;
-  var rows = [];          // every control, for filtering + change marks
-  var STORE = 'debrisRunTuning';
+  var rows = [];          // every control, for filtering
+  var TUNE_STORE = 'debrisRunTuning';
+  var COLLECTION_STORE = 'debrisRunCollections';
 
-  // ---- how each tunable is presented. Anything in TUNE without an entry here
-  // ---- still gets a control, inferred from its default value.
+  // ---- What every tunable does. `g` groups it, `h` explains it. Anything in
+  // ---- TUNE without an entry still gets a control, inferred from its value.
   var META = {
-    darkColorR: null, darkColorG: null, darkColorB: null, // folded into a colour picker
-    lightRes:              { g: 'Lighting', min: 0.15, max: 1, step: 0.05, label: 'Light buffer resolution' },
-    maxShadowLights:       { g: 'Lighting', min: 0, max: 40, step: 1, label: 'Max shadow-casting lights' },
-    maxCastersPerLight:    { g: 'Lighting', min: 0, max: 30, step: 1, label: 'Max casters per light' },
-    shadowSoftness:        { g: 'Lighting', min: 0, max: 0.3, step: 0.005, label: 'Shadow edge softness' },
-    penumbraStrength:      { g: 'Lighting', min: 0, max: 1, step: 0.05, label: 'Penumbra strength' },
-    shadowReach:           { g: 'Lighting', min: 1, max: 6, step: 0.1, label: 'Shadow length' },
-    starfieldBrightness:   { g: 'Lighting', min: 0, max: 3, step: 0.05, label: 'Starfield brightness' },
-    starfieldStride:       { g: 'Lighting', min: 1, max: 8, step: 1, label: 'Starfield thinning (every Nth)' },
+    darkColorR: null, darkColorG: null, darkColorB: null, // folded into one colour picker
 
-    lampRadius:            { g: 'Ship lamps', min: 10, max: 400, step: 2, label: 'Wing lamp radius' },
-    lampIntensity:         { g: 'Ship lamps', min: 0, max: 2, step: 0.02, label: 'Wing lamp intensity' },
-    lampWingDX:            { g: 'Ship lamps', min: 0, max: 40, step: 1, label: 'Lamp X offset' },
-    lampWingDY:            { g: 'Ship lamps', min: -20, max: 40, step: 1, label: 'Lamp Y offset' },
-    navLightRadius:        { g: 'Ship lamps', min: 0, max: 120, step: 2, label: 'Nav light radius' },
-    navLightIntensity:     { g: 'Ship lamps', min: 0, max: 2, step: 0.02, label: 'Nav light intensity' },
+    // ---------- performance ----------
+    maxPixelRatio: { g: 'Performance', min: 0.5, max: 4, step: 0.25, label: 'Max pixel ratio',
+      h: 'Caps how many real pixels the game draws per screen pixel. A phone reporting 3× renders <span class="cost">nine times</span> the pixels of 1× for a difference few people can see. <b>The single biggest performance setting.</b> 2 is a good ceiling; 1 is fastest.' },
+    renderScale: { g: 'Performance', min: 0.4, max: 1.5, step: 0.05, label: 'Render scale',
+      h: 'Multiplies the resolution again on top of the cap. Below 1 the picture softens but every fill, glow and gradient gets cheaper by the <span class="cost">square</span> of it — 0.75 costs about half as much as 1.' },
+    autoQuality: { g: 'Performance', min: 0, max: 1, step: 1, label: 'Auto quality (0/1)',
+      h: 'Lets the game watch its own frame time and give things up when it falls behind: lighting detail first, then glows, then resolution. Turn off to hold exactly the settings you picked and see the true cost.' },
+    glowQuality: { g: 'Performance', min: 0, max: 1.5, step: 0.05, label: 'Glow amount',
+      h: 'Scales every blurred glow — ships, bullets, bosses, pickups. Blur is the <span class="cost">most expensive</span> thing the canvas does, so 0 is a large speed-up and mostly costs you bloom.' },
+    starDensity: { g: 'Performance', min: 0, max: 2, step: 0.05, label: 'Star density',
+      h: 'How thickly the background starfield is seeded, relative to normal.' },
+    maxStars: { g: 'Performance', min: 20, max: 800, step: 10, label: 'Star limit',
+      h: 'Hard ceiling on stars however big the window is. Without it a desktop window carries several times a phone’s count on top of several times the pixels.' },
+    dustDensity: { g: 'Performance', min: 0, max: 2, step: 0.05, label: 'Dust density',
+      h: 'The fast-moving speck layer that sells the sense of speed.' },
+    maxDust: { g: 'Performance', min: 0, max: 1200, step: 20, label: 'Dust limit',
+      h: 'Hard ceiling on dust specks. Each is cheap, but a big window used to draw over a thousand of them every frame.' },
+    bgCloudDensity: { g: 'Performance', min: 0, max: 2, step: 0.05, label: 'Background cloud density',
+      h: 'The huge soft gas clouds drifting far behind everything. They are baked into sprites once, so a few more is not costly — but each still covers a lot of screen.' },
+    fgCloudDensity: { g: 'Performance', min: 0, max: 2, step: 0.05, label: 'Foreground cloud density',
+      h: 'The brighter coloured clouds that pass in <i>front</i> of the ship on level 2.' },
+    maxParticles: { g: 'Performance', min: 40, max: 1500, step: 20, label: 'Particle limit',
+      h: 'Ceiling on explosion sparks. Over it, the oldest are dropped so the blast you just triggered is the one that survives.' },
+    maxDebris: { g: 'Performance', min: 20, max: 800, step: 10, label: 'Debris limit',
+      h: 'Ceiling on the tumbling wreckage left by kills. Same oldest-first rule.' },
+    showFps: { g: 'Performance', min: 0, max: 1, step: 1, label: 'Show fps meter (0/1)',
+      h: 'Draws a live readout in the corner of the game: frame rate, frame time, the real canvas size, and what auto-quality has decided. Turn this on while tuning anything above.' },
 
-    bulletLightRadius:       { g: 'Light sources', min: 0, max: 200, step: 2, label: 'Bullet light radius' },
-    bulletLightIntensity:    { g: 'Light sources', min: 0, max: 1.5, step: 0.01, label: 'Bullet light intensity' },
-    enemyBulletLightRadius:  { g: 'Light sources', min: 0, max: 200, step: 2, label: 'Enemy bullet radius' },
-    enemyBulletLightIntensity:{ g: 'Light sources', min: 0, max: 1.5, step: 0.01, label: 'Enemy bullet intensity' },
-    bombLightRadius:         { g: 'Light sources', min: 0, max: 300, step: 2, label: 'Bomb light radius' },
-    bombLightIntensity:      { g: 'Light sources', min: 0, max: 2, step: 0.02, label: 'Bomb light intensity' },
-    rocketLightRadius:       { g: 'Light sources', min: 0, max: 300, step: 2, label: 'Rocket light radius' },
-    rocketLightIntensity:    { g: 'Light sources', min: 0, max: 2, step: 0.02, label: 'Rocket light intensity' },
-    sunLightScale:           { g: 'Light sources', min: 0, max: 5, step: 0.05, label: 'Sun light reach ×' },
-    sunLightIntensity:       { g: 'Light sources', min: 0, max: 2, step: 0.02, label: 'Sun light intensity' },
-    mineLightRadius:         { g: 'Light sources', min: 0, max: 200, step: 2, label: 'Mine beacon radius' },
-    mineLightIntensity:      { g: 'Light sources', min: 0, max: 2, step: 0.02, label: 'Mine beacon intensity' },
-    chargerLightRadius:      { g: 'Light sources', min: 0, max: 200, step: 2, label: 'Charger glow radius' },
-    chargerLightIntensity:   { g: 'Light sources', min: 0, max: 2, step: 0.02, label: 'Charger glow intensity' },
-    flashLightScale:         { g: 'Light sources', min: 0, max: 12, step: 0.1, label: 'Explosion flash reach ×' },
-    emberLightIntensity:     { g: 'Light sources', min: 0, max: 2, step: 0.02, label: 'Debris ember intensity' },
+    // ---------- darkness ----------
+    lightRes: { g: 'Lighting', min: 0.15, max: 1, step: 0.05, label: 'Light buffer resolution',
+      h: 'Level 3’s darkness is built in an off-screen buffer at this fraction of screen size. Lower is much cheaper and slightly softer — light is blurry anyway, so this is a cheap saving.' },
+    maxShadowLights: { g: 'Lighting', min: 0, max: 40, step: 1, label: 'Max shadow-casting lights',
+      h: 'How many lights may throw real shadows at once. The biggest lights get first claim; the rest still light the scene, they just do not cast. <span class="cost">Costly</span> — each one is a separate render pass.' },
+    maxCastersPerLight: { g: 'Lighting', min: 0, max: 30, step: 1, label: 'Max casters per light',
+      h: 'How many objects can throw a shadow from any one light. Nearest first.' },
+    shadowSoftness: { g: 'Lighting', min: 0, max: 0.3, step: 0.005, label: 'Shadow edge softness',
+      h: 'How far the half-shadow splays out past the hard umbra. Higher reads as a fuzzier, more distant light.' },
+    penumbraStrength: { g: 'Lighting', min: 0, max: 1, step: 0.05, label: 'Penumbra strength',
+      h: 'How dark that soft outer edge gets. 1 makes it as black as the core shadow, removing the soft falloff.' },
+    shadowReach: { g: 'Lighting', min: 1, max: 6, step: 0.1, label: 'Shadow length',
+      h: 'How far a shadow is thrown, as a multiple of the light’s own radius. Must stay above 1 or shadows stop short of the light’s edge and visibly clip.' },
+    starfieldBrightness: { g: 'Lighting', min: 0, max: 3, step: 0.05, label: 'Starfield brightness in the dark',
+      h: 'Stars are self-luminous, so they are laid back over the darkness rather than blacked out with everything else. This is how strongly.' },
+    starfieldStride: { g: 'Lighting', min: 1, max: 8, step: 1, label: 'Starfield thinning',
+      h: 'Draw only every Nth star during the dark pass. 2 halves the cost of that pass at almost no visible loss.' },
 
-    l3HyperspeedTime:  { g: 'Level 3', min: 0.2, max: 10, step: 0.1, label: 'Hyperspeed duration' },
-    l3ArriveTime:      { g: 'Level 3', min: 0.2, max: 10, step: 0.1, label: 'Darkness fall duration' },
-    l3TransitDuration: { g: 'Level 3', min: 5, max: 400, step: 5, label: 'Dark transit length' },
-    l3SunriseTime:     { g: 'Level 3', min: 1, max: 20, step: 0.5, label: 'Sunrise duration' },
-    l3Reward:          { g: 'Level 3', min: 0, max: 20000, step: 100, label: 'Clear reward' },
+    lampRadius: { g: 'Ship lamps', min: 10, max: 400, step: 2, label: 'Wing lamp radius',
+      h: 'How far the pool of light at each wingtip reaches — effectively how much of the dark you can see into.' },
+    lampIntensity: { g: 'Ship lamps', min: 0, max: 2, step: 0.02, label: 'Wing lamp intensity',
+      h: 'How bright that pool is at its centre.' },
+    lampWingDX: { g: 'Ship lamps', min: 0, max: 40, step: 1, label: 'Lamp spacing',
+      h: 'How far out from the hull centreline the two lamps sit.' },
+    lampWingDY: { g: 'Ship lamps', min: -20, max: 40, step: 1, label: 'Lamp forward offset',
+      h: 'Where along the hull they sit. Negative puts them ahead of the ship.' },
+    navLightRadius: { g: 'Ship lamps', min: 0, max: 120, step: 2, label: 'Nav light radius',
+      h: 'The small red (port) and green (starboard) marker lights, like an aircraft’s. Just enough to tint the hull’s surroundings.' },
+    navLightIntensity: { g: 'Ship lamps', min: 0, max: 2, step: 0.02, label: 'Nav light intensity',
+      h: 'Brightness of those two coloured markers.' },
 
-    l2TriggerTime:     { g: 'Level 2 fleet', min: 5, max: 300, step: 5, label: 'Time until fleet jump' },
-    l2ChargeupTime:    { g: 'Level 2 fleet', min: 0.2, max: 10, step: 0.1, label: 'Chargeup duration' },
-    l2HyperspeedTime:  { g: 'Level 2 fleet', min: 0.2, max: 10, step: 0.1, label: 'Hyperspeed duration' },
-    l2ArriveTime:      { g: 'Level 2 fleet', min: 0.2, max: 10, step: 0.1, label: 'Arrival duration' },
-    l2BattleDuration:  { g: 'Level 2 fleet', min: 5, max: 300, step: 5, label: 'Spawning phase length' },
-    l2EnemyInterval:   { g: 'Level 2 fleet', min: 0.05, max: 4, step: 0.05, label: 'Enemy spawn interval' },
-    l2AllyInterval:    { g: 'Level 2 fleet', min: 0.2, max: 12, step: 0.1, label: 'Ally spawn interval' },
-    l2MaxEnemies:      { g: 'Level 2 fleet', min: 1, max: 80, step: 1, label: 'Max concurrent enemies' },
-    l2MaxAllies:       { g: 'Level 2 fleet', min: 0, max: 30, step: 1, label: 'Max concurrent allies' },
-    l2Reward:          { g: 'Level 2 fleet', min: 0, max: 20000, step: 100, label: 'Clear reward' },
-    battleAllyHp:      { g: 'Level 2 fleet', min: 1, max: 20, step: 1, label: 'Ally hit points' },
-    battleAllyFireMin: { g: 'Level 2 fleet', min: 0.05, max: 2, step: 0.01, label: 'Ally fire delay (min)' },
-    battleAllyFireMax: { g: 'Level 2 fleet', min: 0.05, max: 3, step: 0.01, label: 'Ally fire delay (max)' },
-    battleAllySpeed:   { g: 'Level 2 fleet', min: 20, max: 500, step: 5, label: 'Ally speed' },
-    battleAllyHoldDist:{ g: 'Level 2 fleet', min: 20, max: 400, step: 5, label: 'Ally stand-off distance' },
-    battleAllySeparation:{ g: 'Level 2 fleet', min: 0, max: 160, step: 2, label: 'Ally separation' },
+    bulletLightRadius: { g: 'Light sources', min: 0, max: 200, step: 2, label: 'Your bullet — light radius',
+      h: 'Tracer fire briefly lights what it flies past.' },
+    bulletLightIntensity: { g: 'Light sources', min: 0, max: 1.5, step: 0.01, label: 'Your bullet — intensity',
+      h: 'Keep this low: there can be a lot of bullets, and each one is a light.' },
+    enemyBulletLightRadius: { g: 'Light sources', min: 0, max: 200, step: 2, label: 'Enemy bullet — light radius',
+      h: 'How far incoming fire lights the dark. Raising it makes level 3 much more readable.' },
+    enemyBulletLightIntensity: { g: 'Light sources', min: 0, max: 1.5, step: 0.01, label: 'Enemy bullet — intensity',
+      h: 'How brightly incoming fire announces itself.' },
+    bombLightRadius: { g: 'Light sources', min: 0, max: 300, step: 2, label: 'Bomb — light radius', h: 'Glow around a bomb in flight.' },
+    bombLightIntensity: { g: 'Light sources', min: 0, max: 2, step: 0.02, label: 'Bomb — intensity', h: 'How brightly a live bomb burns.' },
+    rocketLightRadius: { g: 'Light sources', min: 0, max: 300, step: 2, label: 'Rocket — light radius', h: 'Glow around a homing rocket’s motor.' },
+    rocketLightIntensity: { g: 'Light sources', min: 0, max: 2, step: 0.02, label: 'Rocket — intensity', h: 'How brightly that motor burns.' },
+    sunLightScale: { g: 'Light sources', min: 0, max: 5, step: 0.05, label: 'Sun — light reach ×',
+      h: 'Multiplies a sun’s lit radius against its heat radius. Suns are the only thing out here that lights the whole field, so this strongly shapes level 3.' },
+    sunLightIntensity: { g: 'Light sources', min: 0, max: 2, step: 0.02, label: 'Sun — light intensity', h: 'How hard a sun pushes back the dark.' },
+    mineLightRadius: { g: 'Light sources', min: 0, max: 200, step: 2, label: 'Mine beacon radius',
+      h: 'A mine’s blinking beacon is what gives it away before it reaches you.' },
+    mineLightIntensity: { g: 'Light sources', min: 0, max: 2, step: 0.02, label: 'Mine beacon intensity', h: 'How bright that blink is at its peak.' },
+    chargerLightRadius: { g: 'Light sources', min: 0, max: 200, step: 2, label: 'Charger glow radius',
+      h: 'The glow a charger builds while it locks on. This is your warning before it dashes.' },
+    chargerLightIntensity: { g: 'Light sources', min: 0, max: 2, step: 0.02, label: 'Charger glow intensity', h: 'How bright that warning gets.' },
+    flashLightScale: { g: 'Light sources', min: 0, max: 12, step: 0.1, label: 'Explosion flash reach ×', h: 'How far an explosion throws light, relative to its own size.' },
+    emberLightIntensity: { g: 'Light sources', min: 0, max: 2, step: 0.02, label: 'Debris ember intensity', h: 'Fresh wreckage glows hot for a moment after a kill. This is how much light it gives off.' },
 
-    superbossTime:     { g: 'Void Titan', min: 10, max: 400, step: 5, label: 'Time until Titan' },
+    // ---------- suns ----------
+    sunCoreColor: { g: 'Suns', label: 'Core colour', h: 'The hottest centre of the disc.' },
+    sunGlowColor: { g: 'Suns', label: 'Disc colour', h: 'The body of the sun around that core, and the inner corona.' },
+    sunCoronaColor: { g: 'Suns', label: 'Corona colour', h: 'The wide halo bleeding off into space.' },
+    sunFlareColor: { g: 'Suns', label: 'Flare colour', h: 'The rotating spikes of light.' },
+    sunLightColor: { g: 'Suns', label: 'Cast light colour', h: 'What colour a sun actually paints the world in during level 3 — separate from how the sun itself looks.' },
+    sunFlareCount: { g: 'Suns', min: 0, max: 12, step: 1, label: 'Flare count', h: 'How many spikes. 0 removes them.' },
+    sunFlareLength: { g: 'Suns', min: 0.5, max: 8, step: 0.1, label: 'Flare length', h: 'Spike length as a multiple of the sun’s radius.' },
 
-    rockIntervalBase:  { g: 'Spawning', min: 0.1, max: 8, step: 0.05, label: 'Asteroid interval' },
-    enemyIntervalBase: { g: 'Spawning', min: 0.1, max: 12, step: 0.1, label: 'Enemy interval' },
-    hazardIntervalBase:{ g: 'Spawning', min: 2, max: 90, step: 1, label: 'Hazard interval' },
-    nebulaIntervalBase:{ g: 'Spawning', min: 2, max: 90, step: 1, label: 'Nebula interval' },
+    // ---------- level 3 ----------
+    l3HyperspeedTime: { g: 'Level 3', min: 0.2, max: 10, step: 0.1, label: 'Hyperspeed duration (s)', h: 'Length of the warp-streak jump into the unlit reach.' },
+    l3ArriveTime: { g: 'Level 3', min: 0.2, max: 10, step: 0.1, label: 'Darkness fall duration (s)', h: 'How long the light takes to drain away on arrival.' },
+    l3TransitDuration: { g: 'Level 3', min: 5, max: 400, step: 5, label: 'Dark transit length (s)', h: 'How long you must survive in the dark before dawn. <b>The length of the level.</b>' },
+    l3SunriseTime: { g: 'Level 3', min: 1, max: 20, step: 0.5, label: 'Sunrise duration (s)', h: 'Length of the closing sunrise once you have crossed.' },
+    l3Reward: { g: 'Level 3', min: 0, max: 20000, step: 100, label: 'Clear reward', h: 'Score for surviving the crossing.' },
 
-    playerFireInterval:{ g: 'Player', min: 0.03, max: 1, step: 0.01, label: 'Fire interval' },
-    playerRadius:      { g: 'Player', min: 4, max: 60, step: 1, label: 'Hitbox radius' },
-    joystickSpeed:     { g: 'Player', min: 60, max: 1200, step: 10, label: 'Joystick speed' }
+    // ---------- level 2 ----------
+    l2TriggerTime: { g: 'Level 2 fleet', min: 5, max: 300, step: 5, label: 'Time until fleet jump (s)', h: 'Seconds of ordinary level-2 play before the fleet battle begins.' },
+    l2ChargeupTime: { g: 'Level 2 fleet', min: 0.2, max: 10, step: 0.1, label: 'Chargeup duration (s)', h: 'The wind-up beat before the jump.' },
+    l2HyperspeedTime: { g: 'Level 2 fleet', min: 0.2, max: 10, step: 0.1, label: 'Hyperspeed duration (s)', h: 'Length of the warp itself.' },
+    l2ArriveTime: { g: 'Level 2 fleet', min: 0.2, max: 10, step: 0.1, label: 'Arrival duration (s)', h: 'The beat where you drop out of warp into the battle.' },
+    l2BattleDuration: { g: 'Level 2 fleet', min: 5, max: 300, step: 5, label: 'Spawning phase length (s)',
+      h: 'How long the enemy fleet keeps reinforcing. After this it stops and you clear the stragglers to win.' },
+    l2EnemyInterval: { g: 'Level 2 fleet', min: 0.05, max: 4, step: 0.05, label: 'Enemy spawn interval (s)', h: 'Seconds between enemy arrivals. <b>The main difficulty dial</b> for the battle.' },
+    l2AllyInterval: { g: 'Level 2 fleet', min: 0.2, max: 12, step: 0.1, label: 'Ally spawn interval (s)', h: 'Seconds between friendly arrivals.' },
+    l2MaxEnemies: { g: 'Level 2 fleet', min: 1, max: 80, step: 1, label: 'Max concurrent enemies', h: 'Ceiling on the enemy side. Also a performance ceiling.' },
+    l2MaxAllies: { g: 'Level 2 fleet', min: 0, max: 30, step: 1, label: 'Max concurrent allies', h: 'Ceiling on your side.' },
+    l2Reward: { g: 'Level 2 fleet', min: 0, max: 20000, step: 100, label: 'Clear reward', h: 'Score for annihilating the armada.' },
+    battleAllyHp: { g: 'Level 2 fleet', min: 1, max: 20, step: 1, label: 'Ally hit points', h: 'How much punishment a battle ally takes before it dies.' },
+    battleAllyFireMin: { g: 'Level 2 fleet', min: 0.05, max: 2, step: 0.01, label: 'Ally fire delay — min (s)', h: 'Fastest an ally will shoot.' },
+    battleAllyFireMax: { g: 'Level 2 fleet', min: 0.05, max: 3, step: 0.01, label: 'Ally fire delay — max (s)', h: 'Slowest. The gap between the two keeps the fleet from firing in lockstep.' },
+    battleAllySpeed: { g: 'Level 2 fleet', min: 20, max: 500, step: 5, label: 'Ally speed', h: 'How fast allies move to engage.' },
+    battleAllyHoldDist: { g: 'Level 2 fleet', min: 20, max: 400, step: 5, label: 'Ally stand-off distance', h: 'How close an ally tries to get before holding station and shooting.' },
+    battleAllySeparation: { g: 'Level 2 fleet', min: 0, max: 160, step: 2, label: 'Ally separation', h: 'How hard allies push apart from each other, so the squadron spreads instead of stacking.' },
+
+    // ---------- mini-bosses ----------
+    bossFirstAt: { g: 'Mini-bosses', min: 5, max: 300, step: 5, label: 'First boss at (s)', h: 'When the first mini-boss appears in a run.' },
+    bossRepeatBase: { g: 'Mini-bosses', min: 10, max: 300, step: 5, label: 'Gap between bosses (s)', h: 'Base delay before the next one after a kill.' },
+    bossRepeatGrowth: { g: 'Mini-bosses', min: 0, max: 60, step: 1, label: 'Gap growth per boss (s)', h: 'Added to that gap for each boss already beaten, so they thin out as the run goes on.' },
+    bossHpBulwark: { g: 'Mini-bosses', min: 5, max: 400, step: 5, label: 'BULWARK hit points', h: 'Health of the red boss — the one with the burst-and-radial pattern.' },
+    bossHpWarden: { g: 'Mini-bosses', min: 5, max: 400, step: 5, label: 'WARDEN hit points', h: 'Health of the purple boss — the one that summons escorts.' },
+    bossHpGrowth: { g: 'Mini-bosses', min: 0, max: 120, step: 5, label: 'Hit points added per boss', h: 'How much tougher each successive boss is. Difficulty multiplies this again.' },
+    bossRadius: { g: 'Mini-bosses', min: 12, max: 120, step: 2, label: 'Size', h: 'Hull radius — both how big it looks and how easily you hit it.' },
+    bossTargetY: { g: 'Mini-bosses', min: 0.05, max: 0.6, step: 0.01, label: 'Hover height', h: 'Where it settles, as a fraction down the screen. Lower numbers keep it further from you.' },
+    bossDriftMin: { g: 'Mini-bosses', min: 0, max: 300, step: 5, label: 'Side drift — min', h: 'Slowest it tracks side to side.' },
+    bossDriftMax: { g: 'Mini-bosses', min: 0, max: 400, step: 5, label: 'Side drift — max', h: 'Fastest. Picked at random between the two on spawn.' },
+    bossRewardBase: { g: 'Mini-bosses', min: 0, max: 5000, step: 50, label: 'Kill reward', h: 'Score for the first mini-boss.' },
+    bossRewardGrowth: { g: 'Mini-bosses', min: 0, max: 2000, step: 25, label: 'Reward growth per boss', h: 'Added for each one already beaten.' },
+
+    // ---------- void titan ----------
+    superbossTime: { g: 'Void Titan', min: 10, max: 400, step: 5, label: 'Time until Titan (s)', h: 'How far into level 1 the Void Titan is triggered. Also what the threat bar counts up to.' },
+    superbossHp: { g: 'Void Titan', min: 50, max: 5000, step: 50, label: 'Hit points', h: 'Total health across all three phases. Difficulty multiplies this.' },
+    superbossRadius: { g: 'Void Titan', min: 20, max: 200, step: 5, label: 'Size', h: 'Hull radius — how big it is and how easily you hit it.' },
+    superbossTargetY: { g: 'Void Titan', min: 0.05, max: 0.6, step: 0.01, label: 'Hover height', h: 'Where it settles, as a fraction down the screen.' },
+    superbossReward: { g: 'Void Titan', min: 0, max: 50000, step: 100, label: 'Kill reward', h: 'Score for bringing it down.' },
+    superbossPhase2At: { g: 'Void Titan', min: 0.05, max: 0.95, step: 0.01, label: 'Phase 2 at health fraction',
+      h: 'It enrages when health falls to this share of maximum. 0.66 means two thirds.' },
+    superbossPhase3At: { g: 'Void Titan', min: 0.05, max: 0.95, step: 0.01, label: 'Phase 3 at health fraction',
+      h: 'Final form threshold. Keep it below the phase 2 value or phase 2 is skipped.' },
+    superbossChargeupTime: { g: 'Void Titan', min: 0.2, max: 10, step: 0.1, label: 'Chargeup duration (s)', h: 'The wind-up before the jump to meet it.' },
+    superbossHyperspeedTime: { g: 'Void Titan', min: 0.2, max: 10, step: 0.1, label: 'Hyperspeed duration (s)', h: 'Length of the warp.' },
+    superbossDetectedTime: { g: 'Void Titan', min: 0.2, max: 10, step: 0.1, label: 'Detected beat (s)', h: 'The pause on arrival before the fight starts.' },
+
+    // ---------- power-ups ----------
+    powerupDropChanceEnemy: { g: 'Power-ups', min: 0, max: 1, step: 0.01, label: 'Drop chance — enemy', h: 'Odds a destroyed enemy leaves a power-up. Difficulty multiplies this.' },
+    powerupDropChanceRock: { g: 'Power-ups', min: 0, max: 1, step: 0.01, label: 'Drop chance — asteroid', h: 'Odds a shattered asteroid leaves one.' },
+    powerupFallSpeedMin: { g: 'Power-ups', min: 0, max: 300, step: 5, label: 'Drift speed — min', h: 'Slowest a dropped pickup falls.' },
+    powerupFallSpeedMax: { g: 'Power-ups', min: 0, max: 400, step: 5, label: 'Drift speed — max', h: 'Fastest. Slower gives you longer to reach it.' },
+    powerupRadius: { g: 'Power-ups', min: 4, max: 60, step: 1, label: 'Pickup radius', h: 'How close you must fly to collect one.' },
+    rapidDuration: { g: 'Power-ups', min: 1, max: 60, step: 0.5, label: 'Rapid fire — duration (s)', h: 'How long the rapid-fire buff lasts.' },
+    spreadDuration: { g: 'Power-ups', min: 1, max: 60, step: 0.5, label: 'Spread shot — duration (s)', h: 'How long the spread buff lasts.' },
+    allyDuration: { g: 'Power-ups', min: 1, max: 90, step: 0.5, label: 'Ally squad — duration (s)', h: 'How long your escort wingmen stay before peeling off.' },
+    rapidFireMult: { g: 'Power-ups', min: 0.05, max: 1, step: 0.01, label: 'Rapid fire — interval ×',
+      h: 'Multiplies the gap between shots while the buff is up. <b>Lower is faster</b> — 0.45 is roughly double rate.' },
+    maxShieldCharges: { g: 'Power-ups', min: 0, max: 8, step: 1, label: 'Max shield charges', h: 'How many shield rings you can stack. Each absorbs one hit.' },
+    maxLives: { g: 'Power-ups', min: 1, max: 12, step: 1, label: 'Max lives', h: 'Ceiling that hull patches can heal you up to.' },
+    salvageScore: { g: 'Power-ups', min: 0, max: 2000, step: 10, label: 'Salvage value', h: 'Score for the plain salvage pickup.' },
+    bombPickupDropChance: { g: 'Power-ups', min: 0, max: 1, step: 0.05, label: 'Ammo drop from bosses', h: 'Odds a beaten mini-boss leaves bomb/rocket ammo.' },
+    bombPickupFallSpeed: { g: 'Power-ups', min: 0, max: 300, step: 5, label: 'Ammo drift speed', h: 'How fast dropped ammo falls.' },
+    maxBombs: { g: 'Power-ups', min: 1, max: 12, step: 1, label: 'Max ammo carried',
+      h: 'How many bombs or rocket volleys you can hold at once. Note the HOARDER badge asks for 4, so setting this below 4 makes that one unobtainable.' },
+    puWeightLife: { g: 'Power-ups', min: 0, max: 1, step: 0.01, label: 'Roll weight — hull patch',
+      h: 'The six weights below are <b>relative</b>: raising one automatically squeezes the rest. They need not add to 1.' },
+    puWeightShield: { g: 'Power-ups', min: 0, max: 1, step: 0.01, label: 'Roll weight — shield', h: 'Relative chance of a shield.' },
+    puWeightAlly: { g: 'Power-ups', min: 0, max: 1, step: 0.01, label: 'Roll weight — ally squad', h: 'Relative chance of wingmen.' },
+    puWeightRapid: { g: 'Power-ups', min: 0, max: 1, step: 0.01, label: 'Roll weight — rapid fire', h: 'Relative chance of rapid fire.' },
+    puWeightSpread: { g: 'Power-ups', min: 0, max: 1, step: 0.01, label: 'Roll weight — spread shot', h: 'Relative chance of spread shot.' },
+    puWeightSalvage: { g: 'Power-ups', min: 0, max: 1, step: 0.01, label: 'Roll weight — salvage', h: 'Relative chance of plain score.' },
+
+    // ---------- weapons ----------
+    bulletSpeed: { g: 'Weapons', min: 100, max: 1600, step: 10, label: 'Bullet speed', h: 'How fast your standard shots travel. Faster means less leading of moving targets.' },
+    bulletSpreadSpeed: { g: 'Weapons', min: 100, max: 1600, step: 10, label: 'Spread shot — speed', h: 'Forward speed of the two extra angled shots.' },
+    bulletSpreadVx: { g: 'Weapons', min: 0, max: 600, step: 10, label: 'Spread shot — sideways speed', h: 'How wide the spread fans out. 0 makes it a straight triple shot.' },
+    bombBlastRadius: { g: 'Weapons', min: 20, max: 700, step: 10, label: 'Bomb blast radius', h: 'Kill radius of a level-1 bomb. Also clears enemy fire inside it.' },
+    rocketBlastRadius: { g: 'Weapons', min: 20, max: 500, step: 10, label: 'Rocket blast radius', h: 'Kill radius where a homing rocket lands — deliberately much smaller than a bomb.' },
+    rocketCount: { g: 'Weapons', min: 1, max: 8, step: 1, label: 'Rockets per volley', h: 'How many rockets one press fires. Each picks its own target; extras beyond the number of live targets fly straight and fizzle.' },
+    rocketSpeed: { g: 'Weapons', min: 100, max: 1200, step: 10, label: 'Rocket speed', h: 'How fast rockets fly.' },
+    rocketTurnRate: { g: 'Weapons', min: 0.2, max: 12, step: 0.1, label: 'Rocket turn rate', h: 'Radians per second a rocket may turn while chasing. Low values make wide graceful arcs that can miss.' },
+    rocketLifetime: { g: 'Weapons', min: 0.5, max: 12, step: 0.1, label: 'Rocket lifetime (s)', h: 'How long before an unspent rocket fizzles out.' },
+
+    // ---------- escort allies ----------
+    allyBulletSpeed: { g: 'Escort allies', min: 100, max: 1600, step: 10, label: 'Wingman bullet speed', h: 'Speed of the shots your escort wingmen fire.' },
+    allyFireInterval: { g: 'Escort allies', min: 0.03, max: 3, step: 0.01, label: 'Wingman fire interval (s)', h: 'Seconds between their shots. Lower is a heavier escort.' },
+    allyOffsetX: { g: 'Escort allies', min: 0, max: 200, step: 2, label: 'Formation width', h: 'How far out to each side the wingmen fly.' },
+    allyOffsetY: { g: 'Escort allies', min: -80, max: 120, step: 2, label: 'Formation depth', h: 'How far behind you they trail. Negative puts them in front.' },
+    allyFollowLerp: { g: 'Escort allies', min: 0.5, max: 20, step: 0.5, label: 'Formation tightness', h: 'How urgently they chase their slot. Low values make them swing loosely behind you.' },
+
+    // ---------- world ----------
+    rockIntervalBase: { g: 'World & spawning', min: 0.1, max: 8, step: 0.05, label: 'Asteroid interval (s)', h: 'Seconds between asteroids at the start of a run. It tightens on its own as the run goes on.' },
+    enemyIntervalBase: { g: 'World & spawning', min: 0.1, max: 12, step: 0.1, label: 'Enemy interval (s)', h: 'Seconds between enemy spawns at the start. Difficulty multiplies this.' },
+    hazardIntervalBase: { g: 'World & spawning', min: 2, max: 90, step: 1, label: 'Hazard interval (s)', h: 'Seconds between cosmic hazards — suns, gravity wells, planets.' },
+    nebulaIntervalBase: { g: 'World & spawning', min: 2, max: 90, step: 1, label: 'Nebula interval (s)', h: 'Seconds between nebula clouds drifting through. Flying inside one slows your ship slightly.' },
+    rockSpeedMin: { g: 'World & spawning', min: 5, max: 400, step: 5, label: 'Asteroid speed — min', h: 'Slowest an asteroid falls. Speed also rises with run time and difficulty.' },
+    rockSpeedMax: { g: 'World & spawning', min: 5, max: 500, step: 5, label: 'Asteroid speed — max', h: 'Fastest an asteroid falls.' },
+    rockRadiusMin: { g: 'World & spawning', min: 4, max: 60, step: 1, label: 'Asteroid size — min', h: 'Smallest asteroid. Anything over 26 takes two shots instead of one.' },
+    rockRadiusMax: { g: 'World & spawning', min: 4, max: 120, step: 1, label: 'Asteroid size — max', h: 'Largest asteroid.' },
+    rockDriftX: { g: 'World & spawning', min: 0, max: 200, step: 5, label: 'Asteroid sideways drift', h: 'How far asteroids wander horizontally as they fall.' },
+
+    // ---------- player ----------
+    playerFireInterval: { g: 'Player', min: 0.03, max: 1, step: 0.01, label: 'Fire interval (s)', h: 'Seconds between your shots. <b>Lower is faster.</b>' },
+    playerRadius: { g: 'Player', min: 4, max: 60, step: 1, label: 'Hitbox radius', h: 'How big a target you are. Smaller is far more forgiving — the ship art does not change.' },
+    joystickSpeed: { g: 'Player', min: 60, max: 1200, step: 10, label: 'Joystick speed', h: 'Movement speed when the virtual joystick is enabled in settings.' },
+    playerFollowLerp: { g: 'Player', min: 1, max: 40, step: 0.5, label: 'Touch follow speed', h: 'How urgently the ship chases your finger or cursor. Higher is snappier, lower feels heavier.' },
+    invincibleFramesHit: { g: 'Player', min: 0, max: 300, step: 5, label: 'Mercy frames — after a hit', h: 'Frames of invulnerability after losing a life, at 60 per second. 90 is about 1.5 seconds.' },
+    invincibleFramesShield: { g: 'Player', min: 0, max: 300, step: 5, label: 'Mercy frames — shield break', h: 'Frames of invulnerability after a shield absorbs a hit.' },
+    invincibleFramesSpawn: { g: 'Player', min: 0, max: 400, step: 5, label: 'Mercy frames — on spawn', h: 'Frames of invulnerability at the start of a run.' },
+
+    // ---------- feel ----------
+    shakeScale: { g: 'Feel', min: 0, max: 3, step: 0.05, label: 'Screen shake', h: 'Scales every camera shake. 0 removes it entirely, which some people much prefer.' },
+    hitstopScale: { g: 'Feel', min: 0, max: 3, step: 0.05, label: 'Hit stop', h: 'Scales the brief freeze on heavy impacts. 0 removes it; high values make hits feel weighty but sluggish.' },
+    flashScale: { g: 'Feel', min: 0, max: 2, step: 0.05, label: 'Damage flash', h: 'Scales the full-screen colour flash when you are hit. 0 removes it.' }
   };
 
-  var GROUP_ORDER = ['Darkness', 'Lighting', 'Ship lamps', 'Light sources', 'Level 3',
-                     'Level 2 fleet', 'Void Titan', 'Spawning', 'Player', 'Other',
-                     'Enemies', 'Hazards', 'Difficulty', 'Titan phases'];
+  var GROUP_NOTES = {
+    'Performance': 'Start here if the game stutters. Turn on the fps meter, then drop the pixel-ratio cap first — it is worth more than everything else combined.',
+    'Darkness': 'The colour space no light reaches. Level 3 only.',
+    'Lighting': 'Level 3 builds its darkness in an off-screen buffer, then multiplies it over the frame. These control that buffer.',
+    'Suns': 'Suns are drawn in three tiers plus flares, and cast their own separate colour into the world.',
+    'Mini-bosses': 'The recurring BULWARK and WARDEN fights. Their attack patterns are editable further down under “Boss patterns”.',
+    'Void Titan': 'The three-phase superboss at the end of level 1. Its per-phase attack scripts are under “Titan phases”.',
+    'Power-ups': 'What drops, how often, and what it does when you fly through it.',
+    'Feel': 'Camera and impact feedback. All three can be turned off entirely.',
+    'Enemies': 'Every enemy type. Speed and fire-delay pairs are a range — the game picks randomly between min and max.',
+    'Hazards': 'Suns, gravity wells and planets, plus how many seconds into a run each first appears.',
+    'Difficulty': 'The multipliers behind each difficulty button. These stack on top of every other setting.',
+    'Boss patterns': 'The attack script each mini-boss runs on a loop. Steps play in order and repeat.',
+    'Titan phases': 'The Void Titan’s three escalating attack scripts.',
+    'Power-up kinds': 'Display name, colour and icon for each pickup.'
+  };
+
+  var GROUP_ORDER = ['Performance', 'Darkness', 'Lighting', 'Ship lamps', 'Light sources', 'Suns',
+                     'Player', 'Weapons', 'Escort allies', 'Feel', 'World & spawning', 'Power-ups',
+                     'Mini-bosses', 'Void Titan', 'Level 2 fleet', 'Level 3', 'Other',
+                     'Enemies', 'Hazards', 'Power-up kinds', 'Difficulty', 'Boss patterns', 'Titan phases'];
 
   // ---------- helpers ----------
   function clamp255(n) { return Math.max(0, Math.min(255, Math.round(n))); }
@@ -243,141 +437,168 @@
     }).join('');
   }
   function fromHex(hex) {
-    var m = /^#?([0-9a-f]{6})$/i.exec(hex.trim());
+    var m = /^#?([0-9a-f]{6})$/i.exec(String(hex).trim());
     if (!m) return null;
     var n = parseInt(m[1], 16);
     return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
   }
   function isHexColor(v) { return typeof v === 'string' && /^#[0-9a-f]{3,8}$/i.test(v); }
 
-  function loadStore() {
-    try { return JSON.parse(localStorage.getItem(STORE) || '{}'); } catch (e) { return {}; }
+  function loadStore(key) {
+    try { return JSON.parse(localStorage.getItem(key) || '{}'); } catch (e) { return {}; }
   }
-  function saveTune(key, value) {
-    var s = loadStore();
-    s[key] = value;
-    try { localStorage.setItem(STORE, JSON.stringify(s)); } catch (e) {}
+  function writeStore(key, obj) {
+    try { localStorage.setItem(key, JSON.stringify(obj)); } catch (e) {}
   }
-  function clearStore() { try { localStorage.removeItem(STORE); } catch (e) {} }
+  function saveTune(k, v) { var s = loadStore(TUNE_STORE); s[k] = v; writeStore(TUNE_STORE, s); }
+  function dropTune(k) { var s = loadStore(TUNE_STORE); delete s[k]; writeStore(TUNE_STORE, s); }
+  function savePath(p, v) { var s = loadStore(COLLECTION_STORE); s[p] = v; writeStore(COLLECTION_STORE, s); }
+  function dropPath(p) { var s = loadStore(COLLECTION_STORE); delete s[p]; writeStore(COLLECTION_STORE, s); }
+  function clearStores() {
+    try { localStorage.removeItem(TUNE_STORE); localStorage.removeItem(COLLECTION_STORE); } catch (e) {}
+  }
 
   // ---------- control builders ----------
   function makeGroup(name) {
     var d = document.createElement('details');
-    d.open = (name === 'Darkness' || name === 'Lighting');
+    d.open = (name === 'Performance');
     var sum = document.createElement('summary');
     sum.innerHTML = '<span>' + name + '</span><span class="count"></span>';
     var body = document.createElement('div');
     body.className = 'group-body';
+    if (GROUP_NOTES[name]) {
+      var note = document.createElement('div');
+      note.className = 'group-note';
+      note.innerHTML = GROUP_NOTES[name];
+      body.appendChild(note);
+    }
     d.appendChild(sum);
     d.appendChild(body);
     panelBody.appendChild(d);
     return { el: d, body: body, count: sum.querySelector('.count'), name: name };
   }
 
-  function register(groupObj, rowEl, labelText, isChanged) {
-    var rec = { row: rowEl, group: groupObj, text: labelText.toLowerCase(), changed: isChanged };
+  function register(group, rowEl, searchText) {
+    var rec = { row: rowEl, group: group, text: String(searchText).toLowerCase() };
     rows.push(rec);
     return rec;
   }
 
-  function markChanged(rec, changed) {
-    rec.changed = changed;
-    rec.row.classList.toggle('changed', !!changed);
-  }
-
-  function numberRow(group, key, value, meta, onSet, isDefaultFn) {
+  // One row = label, explanation, control, and a revert button that appears only
+  // once the value differs from the built-in default.
+  function buildRow(group, labelText, helpHtml, searchText) {
     var row = document.createElement('div');
     row.className = 'row';
     var lab = document.createElement('label');
-    lab.textContent = meta.label || key;
-    lab.title = key;
+    lab.textContent = labelText;
+    row.appendChild(lab);
+    if (helpHtml) {
+      var help = document.createElement('div');
+      help.className = 'help';
+      help.innerHTML = helpHtml;
+      row.appendChild(help);
+    }
+    var ctl = document.createElement('div');
+    ctl.className = 'ctl';
+    row.appendChild(ctl);
+    group.body.appendChild(row);
+    register(group, row, searchText);
+    return { row: row, ctl: ctl, label: lab };
+  }
+
+  function numberControl(group, meta, value, dflt, onSet, onRevert) {
+    var built = buildRow(group, meta.label, meta.h, (meta.label || '') + ' ' + (meta.h || '') + ' ' + (meta.key || ''));
     var range = document.createElement('input');
     range.type = 'range';
     range.min = meta.min; range.max = meta.max; range.step = meta.step;
-    range.value = value;
     var num = document.createElement('input');
     num.type = 'number';
-    num.step = meta.step; num.value = value;
+    num.step = meta.step;
+    var undo = document.createElement('button');
+    undo.className = 'undo'; undo.textContent = '↺'; undo.title = 'Back to default (' + dflt + ')';
 
-    var rec;
+    function paint(v) {
+      range.value = v; num.value = v;
+      built.row.classList.toggle('changed', v !== dflt);
+    }
     function apply(v, from) {
       v = parseFloat(v);
-      if (isNaN(v)) return;
+      if (isNaN(v)) { paint(parseFloat(num.value) || dflt); return; }
       if (from !== 'range') range.value = v;
       if (from !== 'num') num.value = v;
+      built.row.classList.toggle('changed', v !== dflt);
       onSet(v);
-      markChanged(rec, !isDefaultFn(v));
     }
     range.addEventListener('input', function () { apply(range.value, 'range'); });
     num.addEventListener('change', function () { apply(num.value, 'num'); });
+    undo.addEventListener('click', function () { paint(dflt); onRevert(dflt); });
 
-    var ctl = document.createElement('div');
-    ctl.className = 'ctl';
-    ctl.appendChild(range); ctl.appendChild(num);
-    row.appendChild(lab); row.appendChild(ctl);
-    group.body.appendChild(row);
-    rec = register(group, row, (meta.label || key) + ' ' + key, !isDefaultFn(value));
-    markChanged(rec, rec.changed);
-    return { set: function (v) { apply(v, null); } };
+    paint(value);
+    built.ctl.appendChild(range);
+    built.ctl.appendChild(num);
+    built.ctl.appendChild(undo);
+    return { set: paint };
   }
 
-  function colorRow(group, labelText, getHex, onHex, isDefaultFn) {
-    var row = document.createElement('div');
-    row.className = 'row';
-    var lab = document.createElement('label');
-    lab.textContent = labelText;
+  function colorControl(group, meta, value, dflt, onSet, onRevert) {
+    var built = buildRow(group, meta.label, meta.h, (meta.label || '') + ' ' + (meta.h || '') + ' ' + (meta.key || ''));
     var col = document.createElement('input');
-    col.type = 'color'; col.value = getHex();
+    col.type = 'color';
     var txt = document.createElement('input');
-    txt.type = 'text'; txt.value = getHex();
-    var rec;
+    txt.type = 'text';
+    var undo = document.createElement('button');
+    undo.className = 'undo'; undo.textContent = '↺'; undo.title = 'Back to default (' + dflt + ')';
+
+    function paint(hex) {
+      col.value = hex; txt.value = hex;
+      built.row.classList.toggle('changed', hex.toLowerCase() !== String(dflt).toLowerCase());
+    }
     function apply(hex) {
       var c = fromHex(hex);
-      if (!c) return;
-      col.value = toHex(c.r, c.g, c.b);
-      txt.value = col.value;
-      onHex(c);
-      markChanged(rec, !isDefaultFn(col.value));
+      if (!c) { paint(col.value); return; }
+      var norm = toHex(c.r, c.g, c.b);
+      paint(norm);
+      onSet(norm, c);
     }
     col.addEventListener('input', function () { apply(col.value); });
     txt.addEventListener('change', function () { apply(txt.value); });
-    var ctlc = document.createElement('div');
-    ctlc.className = 'ctl';
-    ctlc.appendChild(col); ctlc.appendChild(txt);
-    row.appendChild(lab); row.appendChild(ctlc);
-    group.body.appendChild(row);
-    rec = register(group, row, labelText, !isDefaultFn(col.value));
-    markChanged(rec, rec.changed);
-    return { set: apply };
+    undo.addEventListener('click', function () { paint(dflt); onRevert(dflt); });
+
+    paint(value);
+    built.ctl.appendChild(col);
+    built.ctl.appendChild(txt);
+    built.ctl.appendChild(undo);
+    return { set: paint };
   }
 
-  function textRow(group, labelText, value, onSet, isDefaultFn, title) {
-    var row = document.createElement('div');
-    row.className = 'row';
-    var lab = document.createElement('label');
-    lab.textContent = labelText;
-    if (title) lab.title = title;
+  function textControl(group, meta, value, dflt, onSet, onRevert) {
+    var built = buildRow(group, meta.label, meta.h, (meta.label || '') + ' ' + value);
     var inp = document.createElement('input');
-    inp.type = 'text'; inp.value = value;
-    var rec;
-    inp.addEventListener('change', function () {
-      onSet(inp.value);
-      markChanged(rec, !isDefaultFn(inp.value));
-    });
-    var ctlt = document.createElement('div');
-    ctlt.className = 'ctl';
-    ctlt.appendChild(inp);
-    row.appendChild(lab); row.appendChild(ctlt);
-    group.body.appendChild(row);
-    rec = register(group, row, labelText + ' ' + (title || ''), !isDefaultFn(value));
-    markChanged(rec, rec.changed);
-    return { set: function (v) { inp.value = v; } };
+    inp.type = 'text';
+    var undo = document.createElement('button');
+    undo.className = 'undo'; undo.textContent = '↺'; undo.title = 'Back to default (' + dflt + ')';
+    function paint(v) {
+      inp.value = v;
+      built.row.classList.toggle('changed', v !== dflt);
+    }
+    inp.addEventListener('change', function () { paint(inp.value); onSet(inp.value); });
+    undo.addEventListener('click', function () { paint(dflt); onRevert(dflt); });
+    paint(value);
+    built.ctl.appendChild(inp);
+    built.ctl.appendChild(undo);
+    return { set: paint };
   }
 
-  // ---------- build the whole panel ----------
-  var setters = {};
+  function subhead(group, text) {
+    var el = document.createElement('div');
+    el.className = 'subhead';
+    el.textContent = text;
+    group.body.appendChild(el);
+    register(group, el, text);
+  }
 
-  function buildTuneControls() {
+  // ---------- build the panel ----------
+  function buildPanel() {
     var tune = api.tune, defaults = api.defaults;
     var groups = {};
     function group(name) {
@@ -385,142 +606,236 @@
       return groups[name];
     }
 
-    // Ambient colour gets one picker rather than three raw channels.
+    // The three ambient channels are one colour, not three sliders.
     var dark = group('Darkness');
-    setters.__darkColor = colorRow(dark, 'Dark ambient colour',
-      function () { return toHex(tune.darkColorR, tune.darkColorG, tune.darkColorB); },
-      function (c) {
-        api.set('darkColorR', c.r); api.set('darkColorG', c.g); api.set('darkColorB', c.b);
-        saveTune('darkColorR', c.r); saveTune('darkColorG', c.g); saveTune('darkColorB', c.b);
-      },
-      function (hex) { return hex.toLowerCase() === toHex(defaults.darkColorR, defaults.darkColorG, defaults.darkColorB); });
+    (function () {
+      var dfltHex = toHex(defaults.darkColorR, defaults.darkColorG, defaults.darkColorB);
+      colorControl(dark,
+        { label: 'Dark ambient colour', key: 'darkColor',
+          h: 'The colour everything fades to where no light reaches. Not pure black — this is what gives level 3 its deep-space blue rather than a flat void.' },
+        toHex(tune.darkColorR, tune.darkColorG, tune.darkColorB), dfltHex,
+        function (hex, c) {
+          ['R', 'G', 'B'].forEach(function (ch, i) {
+            var k = 'darkColor' + ch, v = [c.r, c.g, c.b][i];
+            api.set(k, v);
+            if (v === defaults[k]) dropTune(k); else saveTune(k, v);
+          });
+        },
+        function (hex) {
+          var c = fromHex(hex);
+          ['R', 'G', 'B'].forEach(function (ch, i) {
+            api.set('darkColor' + ch, [c.r, c.g, c.b][i]);
+            dropTune('darkColor' + ch);
+          });
+        });
+    })();
 
     Object.keys(tune).forEach(function (key) {
       if (key.indexOf('darkColor') === 0) return;
       var meta = META[key];
       if (meta === null) return;
       var v = tune[key];
-      if (typeof v !== 'number') return;
       if (!meta) {
         var mag = Math.abs(v) || 1;
-        meta = { g: 'Other', min: 0, max: +(mag * 4).toFixed(3), step: mag < 2 ? 0.01 : 1, label: key };
+        meta = { g: 'Other', min: 0, max: +(mag * 4).toFixed(3), step: mag < 2 ? 0.01 : 1,
+                 label: key, h: 'No description written for this one yet.' };
       }
-      setters[key] = numberRow(group(meta.g), key, v, meta,
-        function (nv) { api.set(key, nv); saveTune(key, nv); },
-        function (nv) { return nv === defaults[key]; });
+      meta.key = key;
+      var g = group(meta.g || 'Other');
+      var onSet = function (nv) {
+        api.set(key, nv);
+        if (nv === defaults[key]) dropTune(key); else saveTune(key, nv);
+      };
+      var onRevert = function () { api.set(key, defaults[key]); dropTune(key); };
+      if (isHexColor(v)) colorControl(g, meta, v, defaults[key], onSet, onRevert);
+      else if (typeof v === 'number') numberControl(g, meta, v, defaults[key], onSet, onRevert);
+      else if (typeof v === 'string') textControl(g, meta, v, defaults[key], onSet, onRevert);
     });
 
-    // ---- data collections: every enemy, hazard, difficulty and Titan phase ----
-    var col = api.collections;
+    // ---- the game's data collections ----
+    var col = api.collections, colDef = api.collectionDefaults;
 
-    var enemyGroup = group('Enemies');
-    Object.keys(col.ENEMY_KINDS).forEach(function (kind) {
-      var def = col.ENEMY_KINDS[kind];
-      var sub = document.createElement('div');
-      sub.style.cssText = 'font-family:Orbitron,sans-serif;font-size:9px;letter-spacing:1.4px;color:#7fe9ff;margin:10px 0 5px';
-      sub.textContent = (def.name || kind).toUpperCase();
-      enemyGroup.body.appendChild(sub);
-      register(enemyGroup, sub, kind + ' ' + (def.name || ''), false);
-      buildObjectRows(enemyGroup, col.ENEMY_KINDS, 'ENEMY_KINDS.' + kind, def, kind);
-    });
+    buildCollection(group('Enemies'), col.ENEMY_KINDS, colDef.ENEMY_KINDS, 'ENEMY_KINDS', ENEMY_HELP);
+    buildCollection(group('Hazards'), col.HAZARD_DEFAULTS, colDef.HAZARD_DEFAULTS, 'HAZARD_DEFAULTS', HAZARD_HELP);
+    subhead(group('Hazards'), 'FIRST APPEARANCE');
+    buildLeaves(group('Hazards'), col.HAZARD_UNLOCK, colDef.HAZARD_UNLOCK, 'HAZARD_UNLOCK', 'unlock',
+      { '*': 'Seconds into a run before this hazard can appear at all.' });
+    buildCollection(group('Power-up kinds'), col.POWERUP_KINDS, colDef.POWERUP_KINDS, 'POWERUP_KINDS', POWERUP_HELP);
+    buildCollection(group('Difficulty'), col.DIFFICULTIES, colDef.DIFFICULTIES, 'DIFFICULTIES', DIFFICULTY_HELP);
+    buildCollection(group('Boss patterns'), col.BOSS_PATTERNS, colDef.BOSS_PATTERNS, 'BOSS_PATTERNS', PATTERN_HELP);
+    buildCollection(group('Titan phases'), col.SUPERBOSS_PHASES, colDef.SUPERBOSS_PHASES, 'SUPERBOSS_PHASES', PATTERN_HELP);
 
-    var hazGroup = group('Hazards');
-    Object.keys(col.HAZARD_DEFAULTS).forEach(function (type) {
-      var def = col.HAZARD_DEFAULTS[type];
-      var sub = document.createElement('div');
-      sub.style.cssText = 'font-family:Orbitron,sans-serif;font-size:9px;letter-spacing:1.4px;color:#7fe9ff;margin:10px 0 5px';
-      sub.textContent = (def.name || type).toUpperCase();
-      hazGroup.body.appendChild(sub);
-      register(hazGroup, sub, type + ' ' + (def.name || ''), false);
-      buildObjectRows(hazGroup, col.HAZARD_DEFAULTS, 'HAZARD_DEFAULTS.' + type, def, type);
-    });
-    buildObjectRows(hazGroup, col.HAZARD_UNLOCK, 'HAZARD_UNLOCK', col.HAZARD_UNLOCK, 'unlock at (s)');
-
-    var diffGroup = group('Difficulty');
-    Object.keys(col.DIFFICULTIES).forEach(function (name) {
-      var d = col.DIFFICULTIES[name];
-      var sub = document.createElement('div');
-      sub.style.cssText = 'font-family:Orbitron,sans-serif;font-size:9px;letter-spacing:1.4px;color:#7fe9ff;margin:10px 0 5px';
-      sub.textContent = name.toUpperCase();
-      diffGroup.body.appendChild(sub);
-      register(diffGroup, sub, name, false);
-      buildObjectRows(diffGroup, col.DIFFICULTIES, 'DIFFICULTIES.' + name, d, name);
-    });
-
-    var phaseGroup = group('Titan phases');
-    Object.keys(col.SUPERBOSS_PHASES).forEach(function (p) {
-      var ph = col.SUPERBOSS_PHASES[p];
-      var sub = document.createElement('div');
-      sub.style.cssText = 'font-family:Orbitron,sans-serif;font-size:9px;letter-spacing:1.4px;color:#7fe9ff;margin:10px 0 5px';
-      sub.textContent = 'PHASE ' + p;
-      phaseGroup.body.appendChild(sub);
-      register(phaseGroup, sub, 'phase ' + p, false);
-      buildObjectRows(phaseGroup, col.SUPERBOSS_PHASES, 'SUPERBOSS_PHASES.' + p, ph, 'phase' + p);
-    });
-
-    // order the groups
     GROUP_ORDER.forEach(function (n) { if (groups[n]) panelBody.appendChild(groups[n].el); });
     Object.keys(groups).forEach(function (n) {
       if (GROUP_ORDER.indexOf(n) === -1) panelBody.appendChild(groups[n].el);
     });
     Object.keys(groups).forEach(function (n) {
-      var g = groups[n];
-      g.count.textContent = g.body.querySelectorAll('.row').length;
+      groups[n].count.textContent = groups[n].body.querySelectorAll('.row').length;
     });
   }
 
-  // Renders every editable leaf of a collection entry (numbers, colours, strings,
-  // and [min,max] pairs like an enemy's speed range).
-  function buildObjectRows(group, rootObj, path, obj, prefix) {
+  var ENEMY_HELP = {
+    name: 'Name shown when this type is referenced.',
+    color: 'Hull and glow colour.',
+    hp: 'Shots needed to destroy it.',
+    r: 'Hitbox radius — how easily it is hit, and how big it draws.',
+    speed: 'Movement speed, picked at random between min and max on spawn.',
+    score: 'Points for a kill.',
+    fireDelay: 'Seconds between its shots, picked at random in this range. Difficulty scales it.'
+  };
+  var HAZARD_HELP = {
+    name: 'Name shown on the hazard warning.',
+    color: 'Colour of the body and its warning ring.',
+    r: 'Physical radius.',
+    coreR: 'Radius of the lethal core — touching this destroys you.',
+    eventHorizon: 'Radius inside which nothing escapes a gravity well.',
+    pullRadius: 'How far its gravity reaches.',
+    pullStrength: 'How hard it pulls. Falls off with distance, so this number is large.',
+    heatRadius: 'How far a sun’s heat — and its light in level 3 — carries.',
+    telegraphMax: 'Seconds of warning before it fully arrives.',
+    colors: 'One of the surface colours a planet may be given; the game picks between them at random on spawn.'
+  };
+  var POWERUP_HELP = {
+    name: 'Label shown when collected.',
+    color: 'Pickup colour and its collection sparks.',
+    icon: 'The glyph drawn on the pickup.'
+  };
+  var DIFFICULTY_HELP = {
+    label: 'Text on the difficulty button.',
+    startLives: 'Lives you begin with.',
+    speedMult: 'Multiplies enemy and asteroid speed.',
+    enemyFireMult: 'Multiplies the delay between enemy shots — <b>higher means they shoot less</b>.',
+    spawnMult: 'Multiplies spawn intervals — <b>higher means fewer</b> enemies.',
+    scoreMult: 'Multiplies all score earned.',
+    bossHpMult: 'Multiplies every boss’s health.',
+    hazardMult: 'Multiplies hazard frequency.',
+    powerupMult: 'Multiplies power-up drop chance.'
+  };
+  var PATTERN_HELP = {
+    name: 'Name shown on the health bar during this phase.',
+    color: 'Health bar and glow colour for this phase.',
+    type: 'What this step does: wait, single, fan, radial, spiral, telegraph, summon, laser, dash.',
+    time: 'How long this step lasts, in seconds.',
+    count: 'How many bullets (or summoned enemies) this step produces.',
+    spreadDeg: 'Width of the fan, in degrees.',
+    speed: 'Speed of the bullets this step fires.',
+    angleStep: 'How far the spiral advances between shots, in radians.',
+    fireEvery: 'Seconds between shots within a spiral.',
+    every: 'Seconds between shots in a homing barrage.'
+  };
+
+  // Renders one entry per key of a collection, each under its own subheading.
+  // An entry may itself be an attack script (a bare array of steps), which gets
+  // a heading per step rather than being labelled by index.
+  function buildCollection(group, obj, defaults, rootPath, help) {
+    Object.keys(obj).forEach(function (key) {
+      var entry = obj[key];
+      var path = rootPath + '.' + key;
+      subhead(group, String((entry && entry.name) || (entry && entry.label) || key).toUpperCase());
+      if (Array.isArray(entry)) {
+        buildSteps(group, entry, defaults ? defaults[key] : undefined, path, key, help);
+      } else {
+        buildLeaves(group, entry, defaults ? defaults[key] : undefined, path, key, help);
+      }
+    });
+  }
+
+  function buildSteps(group, arr, defaults, path, prefix, help) {
+    arr.forEach(function (step, i) {
+      if (!step || typeof step !== 'object') return;
+      subhead(group, prefix + ' — step ' + (i + 1) + (step.type ? ' (' + step.type + ')' : ''));
+      buildLeaves(group, step, defaults ? defaults[i] : undefined, path + '.' + i,
+                  prefix + ' ' + (i + 1), help, 1);
+    });
+  }
+
+  // Walks an entry and emits a control for every editable leaf: numbers,
+  // colours, strings, [min,max] pairs, and arrays of step objects (the boss
+  // attack scripts). Functions are skipped — those are code, not tuning.
+  function buildLeaves(group, obj, defaults, path, prefix, help, depth) {
+    depth = depth || 0;
+    if (!obj || typeof obj !== 'object') return;
     Object.keys(obj).forEach(function (k) {
       var v = obj[k];
+      var dflt = defaults ? defaults[k] : undefined;
       var full = path + '.' + k;
       if (typeof v === 'function') return;
+
+      // a [min, max] range pair
       if (Array.isArray(v) && v.length === 2 && typeof v[0] === 'number') {
-        [0, 1].forEach(function (idx) {
-          var mag = Math.abs(v[idx]) || 1;
-          var orig = v[idx];
-          setters[full + '[' + idx + ']'] = numberRow(group, full,
-            v[idx],
-            { min: 0, max: +(Math.max(mag * 4, 10)).toFixed(2), step: mag < 3 ? 0.01 : 1,
-              label: prefix + ' · ' + k + (idx ? ' max' : ' min') },
-            function (nv) { v[idx] = nv; },
-            function (nv) { return nv === orig; });
+        [0, 1].forEach(function (i) {
+          var mag = Math.abs(dflt ? dflt[i] : v[i]) || 1;
+          leafNumber(group, full + '.' + i, prefix + ' · ' + k + (i ? ' max' : ' min'),
+            (help && (help[k] || help['*'])) || '', v[i], dflt ? dflt[i] : v[i], mag,
+            function (nv) { v[i] = nv; });
         });
         return;
       }
+      // a list of plain values, such as a planet's three possible surface colours
+      if (Array.isArray(v) && v.length && typeof v[0] !== 'object') {
+        v.forEach(function (item, i) {
+          var itemPath = full + '.' + i;
+          var itemDflt = dflt ? dflt[i] : item;
+          var lbl = prefix + ' · ' + k + ' ' + (i + 1);
+          if (isHexColor(item)) {
+            colorControl(group, { label: lbl, key: itemPath, h: (help && help[k]) || '' }, item, itemDflt,
+              function (hex) { v[i] = hex; api.setPath(itemPath, hex); if (hex === itemDflt) dropPath(itemPath); else savePath(itemPath, hex); },
+              function (hex) { v[i] = hex; api.setPath(itemPath, hex); dropPath(itemPath); });
+          } else if (typeof item === 'number') {
+            leafNumber(group, itemPath, lbl, (help && (help[k] || help['*'])) || '',
+              item, itemDflt, Math.abs(itemDflt) || 1, function (nv) { v[i] = nv; });
+          } else if (typeof item === 'string') {
+            textControl(group, { label: lbl, key: itemPath, h: (help && help[k]) || '' }, item, itemDflt,
+              function (nv) { v[i] = nv; api.setPath(itemPath, nv); if (nv === itemDflt) dropPath(itemPath); else savePath(itemPath, nv); },
+              function (nv) { v[i] = nv; api.setPath(itemPath, nv); dropPath(itemPath); });
+          }
+        });
+        return;
+      }
+      // an attack script: an array of step objects
+      if (Array.isArray(v)) {
+        buildSteps(group, v, dflt, full, prefix + ' · ' + k, help);
+        return;
+      }
+      if (v !== null && typeof v === 'object') {
+        buildLeaves(group, v, dflt, full, prefix + ' · ' + k, help, depth + 1);
+        return;
+      }
       if (typeof v === 'number') {
-        var mag = Math.abs(v) || 1;
-        var orig0 = v;
-        setters[full] = numberRow(group, full, v,
-          { min: 0, max: +(Math.max(mag * 4, 4)).toFixed(2), step: mag < 3 ? 0.01 : 1,
-            label: prefix + ' · ' + k },
-          function (nv) { obj[k] = nv; },
-          function (nv) { return nv === orig0; });
+        leafNumber(group, full, prefix + ' · ' + k, (help && (help[k] || help['*'])) || '',
+          v, dflt === undefined ? v : dflt, Math.abs(dflt === undefined ? v : dflt) || 1,
+          function (nv) { obj[k] = nv; });
         return;
       }
       if (isHexColor(v)) {
-        var origC = v;
-        colorRow(group, prefix + ' · ' + k,
-          function () { return v.length === 7 ? v : '#ffffff'; },
-          function (c) { obj[k] = toHex(c.r, c.g, c.b); },
-          function (hex) { return hex.toLowerCase() === origC.toLowerCase(); });
+        colorControl(group, { label: prefix + ' · ' + k, key: full, h: (help && help[k]) || '' },
+          v.length === 7 ? v : '#ffffff', dflt || v,
+          function (hex) { api.setPath(full, hex); if (hex === dflt) dropPath(full); else savePath(full, hex); },
+          function (hex) { api.setPath(full, hex); dropPath(full); });
         return;
       }
       if (typeof v === 'string') {
-        var origS = v;
-        textRow(group, prefix + ' · ' + k, v,
-          function (nv) { obj[k] = nv; },
-          function (nv) { return nv === origS; }, full);
+        textControl(group, { label: prefix + ' · ' + k, key: full, h: (help && help[k]) || '' }, v, dflt === undefined ? v : dflt,
+          function (nv) { api.setPath(full, nv); if (nv === dflt) dropPath(full); else savePath(full, nv); },
+          function (nv) { api.setPath(full, nv); dropPath(full); });
       }
     });
   }
 
+  function leafNumber(group, full, label, helpText, value, dflt, mag, localSet) {
+    var step = mag < 1 ? 0.001 : (mag < 3 ? 0.01 : (mag < 200 ? 1 : 1000));
+    var max = +(Math.max(mag * 4, mag + 10)).toFixed(3);
+    numberControl(group, { label: label, key: full, h: helpText, min: 0, max: max, step: step },
+      value, dflt,
+      function (nv) { localSet(nv); api.setPath(full, nv); if (nv === dflt) dropPath(full); else savePath(full, nv); },
+      function (nv) { localSet(nv); api.setPath(full, nv); dropPath(full); });
+  }
+
   // ---------- stage controls ----------
-  function btn(parent, label, fn, cls) {
+  function btn(parent, label, fn, title) {
     var b = document.createElement('button');
     b.textContent = label;
-    if (cls) b.className = cls;
+    if (title) b.title = title;
     b.addEventListener('click', fn);
     parent.appendChild(b);
     return b;
@@ -535,7 +850,16 @@
     btn(bar, 'Level 2', function () { api.actions.start(2); });
     btn(bar, 'Level 3', function () { api.actions.start(3); });
     btn(bar, 'Restart', function () { api.actions.restart(); });
-    btn(bar, 'Reload preview', function () { frame.src = frame.src; api = null; });
+    btn(bar, 'Reload preview', function () { frame.src = frame.src; api = null; },
+        'Reloads the game. Your settings are saved, so they come back with it.');
+
+    var diff = document.createElement('select');
+    ['veryeasy', 'easy', 'normal', 'hard', 'insane'].forEach(function (d) {
+      var o = document.createElement('option'); o.value = d; o.textContent = d; diff.appendChild(o);
+    });
+    diff.value = 'normal';
+    diff.addEventListener('change', function () { api.actions.setDifficulty(diff.value); });
+    bar.appendChild(diff);
 
     var invOn = false;
     var invBtn = btn(bar, 'Invincible', function () {
@@ -561,7 +885,10 @@
     btn(bar2, 'Spawn hazard', function () { api.actions.spawnHazard(hSel.value); });
 
     btn(bar2, 'Power-up', function () { api.actions.spawnPowerUp(); });
+    btn(bar2, 'Mini-boss', function () { api.actions.spawnBoss(); });
+    btn(bar2, 'Void Titan', function () { api.actions.spawnSuperboss(); });
     btn(bar2, '+5 ammo', function () { api.actions.giveBombs(5); });
+    btn(bar2, '+9 lives', function () { api.actions.giveLives(9); });
     btn(bar2, 'Clear field', function () { api.actions.clearField(); });
     btn(bar2, 'Fleet battle now', function () { api.actions.skipToLevel2Battle(); });
     btn(bar2, 'Sunrise now', function () { api.actions.skipToLevel3Sunrise(); });
@@ -572,6 +899,7 @@
     var dk = document.createElement('input');
     dk.type = 'range'; dk.min = 0; dk.max = 1; dk.step = 0.02; dk.value = 0;
     dk.style.width = '90px';
+    dk.title = 'Force the level-3 darkness on at any time, to preview lighting without playing to it.';
     dk.addEventListener('input', function () { api.actions.setDark(parseFloat(dk.value)); });
     darkRow.appendChild(dk);
     bar2.appendChild(darkRow);
@@ -583,13 +911,17 @@
       try {
         var st = api.state();
         readout.textContent =
-          'state ' + st.state + '   level ' + st.level + '   score ' + st.score + '   lives ' + st.lives +
-          '   t ' + st.elapsed + 's   ammo ' + st.bombs + '\n' +
-          'dark ' + st.darkAmbient + '   lightRes ' + st.lightRes + '   frame ' + st.frameMs + 'ms' +
-          '   lights ' + st.lights + '   occluders ' + st.occluders + '\n' +
+          st.fps + ' fps   ' + st.frameMs + ' ms   ' + st.canvasPx + ' px @ ' + st.dpr +
+          '×   auto ' + st.autoScale + '\n' +
+          'state ' + st.state + '   level ' + st.level + '   ' + st.difficulty +
+          '   score ' + st.score + '   lives ' + st.lives + '   t ' + st.elapsed + 's   ammo ' + st.bombs + '\n' +
           'enemies ' + st.enemies + '   rocks ' + st.rocks + '   allies ' + st.allies +
+          '   particles ' + st.particles + '   debris ' + st.debris +
           '   hazards [' + st.hazards.join(', ') + ']\n' +
-          'L3 ' + st.level3State + '   L2boss ' + st.level2BossState + '   titan ' + st.superbossState;
+          'dark ' + st.darkAmbient + '   lightRes ' + st.lightRes + '   lights ' + st.lights +
+          '   occluders ' + st.occluders + '\n' +
+          'L3 ' + st.level3State + '   L2boss ' + st.level2BossState + '   titan ' + st.superbossState +
+          (st.boss ? '   boss ' + st.boss : '');
       } catch (e) { /* preview mid-reload */ }
     }
     requestAnimationFrame(tick);
@@ -603,8 +935,7 @@
     api = w.__editor;
     panelBody.innerHTML = '';
     rows = [];
-    setters = {};
-    buildTuneControls();
+    buildPanel();
     buildStageBar();
     errBox.style.display = 'none';
     return true;
@@ -616,7 +947,7 @@
     if (++tries > 60) {
       errBox.style.display = 'block';
       errBox.innerHTML = 'Could not reach the game preview.<br><br>' +
-        'If you opened this file directly from disk, the browser blocks the editor from ' +
+        'If you opened this file straight from disk, the browser blocks the editor from ' +
         'talking to the iframe. Serve the folder over http instead — from the project ' +
         'folder run <code>python3 -m http.server</code> and open ' +
         '<code>http://localhost:8000/editor.html</code>. On the live site it works as-is.';
@@ -634,14 +965,31 @@
     rows.forEach(function (r) {
       r.row.style.display = (!q || r.text.indexOf(q) !== -1) ? '' : 'none';
     });
-    if (q) {
-      panelBody.querySelectorAll('details').forEach(function (d) { d.open = true; });
-    }
+    if (q) panelBody.querySelectorAll('details').forEach(function (d) { d.open = true; });
   });
 
-  // ---------- import / export / reset ----------
+  // ---------- presets, import / export / reset ----------
+  var FAST = { maxPixelRatio: 1, renderScale: 0.85, glowQuality: 0, starDensity: 0.5, maxStars: 120,
+               dustDensity: 0.4, maxDust: 140, bgCloudDensity: 0.5, fgCloudDensity: 0.5,
+               maxParticles: 140, maxDebris: 80, lightRes: 0.35, maxShadowLights: 6,
+               maxCastersPerLight: 5, starfieldStride: 3 };
+  var PRETTY = { maxPixelRatio: 2, renderScale: 1, glowQuality: 1, starDensity: 1, maxStars: 320,
+                 dustDensity: 1, maxDust: 500, bgCloudDensity: 1, fgCloudDensity: 1,
+                 maxParticles: 600, maxDebris: 300, lightRes: 0.75, maxShadowLights: 22,
+                 maxCastersPerLight: 14, starfieldStride: 1 };
+
+  function applyPreset(preset) {
+    Object.keys(preset).forEach(function (k) {
+      if (!api.set(k, preset[k])) return;
+      if (preset[k] === api.defaults[k]) dropTune(k); else saveTune(k, preset[k]);
+    });
+    connect();
+  }
+  document.getElementById('btnFast').addEventListener('click', function () { applyPreset(FAST); });
+  document.getElementById('btnPretty').addEventListener('click', function () { applyPreset(PRETTY); });
+
   document.getElementById('btnExport').addEventListener('click', function () {
-    var out = JSON.stringify(loadStore(), null, 2);
+    var out = JSON.stringify({ tune: loadStore(TUNE_STORE), collections: loadStore(COLLECTION_STORE) }, null, 2);
     navigator.clipboard.writeText(out).then(function () {
       var b = document.getElementById('btnExport');
       var old = b.textContent; b.textContent = 'Copied ✓';
@@ -654,15 +1002,17 @@
     if (!txt) return;
     var obj;
     try { obj = JSON.parse(txt); } catch (e) { alert('That is not valid JSON.'); return; }
-    Object.keys(obj).forEach(function (k) {
-      if (api.set(k, obj[k])) saveTune(k, obj[k]);
-    });
+    // Accept both the current {tune, collections} shape and the older flat one.
+    var tunePart = obj.tune || obj;
+    var colPart = obj.collections || {};
+    Object.keys(tunePart).forEach(function (k) { if (api.set(k, tunePart[k])) saveTune(k, tunePart[k]); });
+    Object.keys(colPart).forEach(function (p) { if (api.setPath(p, colPart[p])) savePath(p, colPart[p]); });
     connect();
   });
 
   document.getElementById('btnReset').addEventListener('click', function () {
-    if (!confirm('Reset every tuning value back to the built-in defaults?')) return;
-    clearStore();
+    if (!confirm('Reset every setting — tuning, enemies, hazards, bosses — back to the built-in defaults?')) return;
+    clearStores();
     api.resetTune();
     connect();
   });
